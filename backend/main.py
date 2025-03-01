@@ -8,6 +8,7 @@ import torch
 print(whisper.__version__)  # Should print the version or commit hash
 print(torchaudio.__version__)
 print(torch.__version__)
+from fastapi.openapi.utils import get_openapi
 
 import uuid
 import asyncio
@@ -89,5 +90,20 @@ async def get_room_participants(room_id: str):
     """
     participants = await room_manager.get_participants(room_id)
     return {"participants": len(participants)}
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title="Live Voice Translation API",
+        version="1.0.0",
+        description="API for real-time voice translation via WebSockets.",
+        routes=app.routes,
+    )
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
+
 
 # Run with: uvicorn main:app --host 0.0.0.0 --port 8000
