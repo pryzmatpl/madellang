@@ -10,9 +10,11 @@ from model_manager import ModelManager
 
 import sys
 sys.path.append("./deps/whisper")
-sys.path.append("./deps/")
+sys.path.append("./deps/audio")
 import whisper
+import torchaudio
 print(whisper.__version__)  # Should print the version or commit hash
+print(torchaudio.__version__)
 # Now use whisper as usual
 model = whisper.load_model("turbo")
 result = model.transcribe("./data/test/test.m4a")
