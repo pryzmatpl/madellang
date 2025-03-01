@@ -1,3 +1,14 @@
+import sys
+sys.path.append("./deps/whisper")
+sys.path.append("./deps/pytorch")
+sys.path.append("./deps/audio")
+import whisper
+import torchaudio
+import torch
+print(whisper.__version__)  # Should print the version or commit hash
+print(torchaudio.__version__)
+print(torch.__version__)
+
 import uuid
 import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -8,13 +19,6 @@ from room_manager import RoomManager
 from audio_processor import AudioProcessor
 from model_manager import ModelManager
 
-import sys
-sys.path.append("./deps/whisper")
-sys.path.append("./deps/audio")
-import whisper
-import torchaudio
-print(whisper.__version__)  # Should print the version or commit hash
-print(torchaudio.__version__)
 # Now use whisper as usual
 model = whisper.load_model("turbo")
 result = model.transcribe("./data/test/test.m4a")
