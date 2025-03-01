@@ -6,8 +6,6 @@ python-multipart==0.0.6
 requests==2.31.0
 
 # For local models (optional)
-openai-whisper==1.0.0
 transformers==4.30.0
-torch==2.0.1
-TTS==0.14.0
+#TTS==0.22.0
 soundfile==0.12.1

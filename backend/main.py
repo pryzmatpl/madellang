@@ -8,6 +8,16 @@ from room_manager import RoomManager
 from audio_processor import AudioProcessor
 from model_manager import ModelManager
 
+import sys
+sys.path.append("./deps/whisper")
+sys.path.append("./deps/")
+import whisper
+print(whisper.__version__)  # Should print the version or commit hash
+# Now use whisper as usual
+model = whisper.load_model("turbo")
+result = model.transcribe("./data/test/test.m4a")
+print(result["text"])
+
 app = FastAPI()
 
 # Add CORS to allow connections from your frontend
