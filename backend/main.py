@@ -14,10 +14,13 @@ import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, List, Optional
+import numpy as np
+from pydantic import BaseModel
 
 from room_manager import RoomManager
 from audio_processor import AudioProcessor
 from model_manager import ModelManager
+from translation_service import TranslationService
 
 # Now use whisper as usual
 model = whisper.load_model("turbo")
@@ -35,9 +38,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Define request/response models
+class TextTranslationRequest(BaseModel):
+    text: str
+    source_lang: str
+    target_lang: str
+
+class TextTranslationResponse(BaseModel):
+    translated_text: str
+
 # Initialize components
+translation_service = TranslationService()
 model_manager = ModelManager()
-audio_processor = AudioProcessor(model_manager)
+audio_processor = AudioProcessor(model_manager, translation_service)
 room_manager = RoomManager(audio_processor)
 
 @app.get("/")
@@ -89,5 +102,21 @@ async def get_room_participants(room_id: str):
     """
     participants = await room_manager.get_participants(room_id)
     return {"participants": len(participants)}
+
+@app.get("/available-languages")
+async def get_available_languages():
+    """Get all available languages for translation"""
+    languages = translation_service.get_available_languages()
+    return {"languages": languages}
+
+@app.post("/translate-text")
+async def translate_text(request: TextTranslationRequest):
+    """Translate text between languages"""
+    translated = translation_service.translate_text(
+        request.text,
+        request.source_lang,
+        request.target_lang
+    )
+    return TextTranslationResponse(translated_text=translated)
 
 # Run with: uvicorn main:app --host 0.0.0.0 --port 8000
