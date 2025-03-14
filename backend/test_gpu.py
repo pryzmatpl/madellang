@@ -29,6 +29,12 @@ try:
     else:
         print("No GPU available for testing")
         
+    # From the docs/source/notes/hip.rst:
+    cuda = torch.device('cuda')     # Default HIP device
+    cuda0 = torch.device('cuda:0')  # 'rocm' or 'hip' are not valid, use 'cuda'
+        
 except Exception as e:
     print(f"Error: {e}")
     print("GPU test failed!") 
+
+model = whisper.load_model("turbo") 
