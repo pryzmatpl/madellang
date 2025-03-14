@@ -1,0 +1,151 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Live Voice Translation API",
+    "version": "1.0.0",
+    "description": "This API enables real-time voice translation by processing audio streams through WebSockets and converting speech to text, translating it, and streaming back the translated audio."
+  },
+  "paths": {
+    "/": {
+      "get": {
+        "summary": "API Health Check",
+        "operationId": "root",
+        "responses": {
+          "200": {
+            "description": "API is running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Voice Translation API is running"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ws/{room_id}": {
+      "get": {
+        "summary": "WebSocket Endpoint for Audio Streaming",
+        "description": "Handles WebSocket connections for real-time voice translation. Clients send audio data and receive translated speech.",
+        "operationId": "websocket_endpoint",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unique identifier for the translation room."
+          },
+          {
+            "name": "target_lang",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "es"
+            },
+            "description": "Target language for translation (default: Spanish 'es')."
+          }
+        ],
+        "responses": {
+          "101": {
+            "description": "WebSocket connection established."
+          },
+          "400": {
+            "description": "Invalid room ID."
+          }
+        }
+      }
+    },
+    "/create-room": {
+      "get": {
+        "summary": "Create a New Room",
+        "operationId": "create_room",
+        "responses": {
+          "200": {
+            "description": "Room created successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "room_id": {
+                      "type": "string",
+                      "example": "abc123"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rooms/{room_id}/participants": {
+      "get": {
+        "summary": "Get Room Participants",
+        "operationId": "get_room_participants",
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The room ID to retrieve participant count."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Number of participants in the room.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "participants": {
+                      "type": "integer",
+                      "example": 3
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Room": {
+        "type": "object",
+        "properties": {
+          "room_id": {
+            "type": "string",
+            "example": "abc123"
+          }
+        }
+      },
+      "Participants": {
+        "type": "object",
+        "properties": {
+          "participants": {
+            "type": "integer",
+            "example": 3
+          }
+        }
+      }
+    }
+  }
+}
