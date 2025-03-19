@@ -1,138 +1,184 @@
-
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { v4 as uuidv4 } from 'uuid';
 
 // In a real application, this would be an environment variable
-const SERVER_URL = 'https://yourbackend.com'; // This is a placeholder
+const SERVER_URL = 'http://localhost:8000'; 
 
-export interface RoomState {
-  roomId: string;
+interface RoomState {
   isConnected: boolean;
-  isRoomCreator: boolean;
+  isRecording: boolean;
+  currentRoom: string | null;
   error: string | null;
-  participants: string[];
 }
 
-export interface UseRoomConnectionProps {
+interface RoomConnectionOptions {
   targetLanguage: string;
   onTranslatedAudio?: (audioBlob: Blob) => void;
 }
 
-export const useRoomConnection = ({
+export function useRoomConnection({ 
   targetLanguage,
-  onTranslatedAudio,
-}: UseRoomConnectionProps) => {
+  onTranslatedAudio 
+}: RoomConnectionOptions) {
   const [roomState, setRoomState] = useState<RoomState>({
-    roomId: '',
     isConnected: false,
-    isRoomCreator: false,
-    error: null,
-    participants: [],
+    isRecording: false,
+    currentRoom: null,
+    error: null
   });
   
+  const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
   const socketRef = useRef<Socket | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
   
-  // For demo purposes, instead of connecting to a real server,
-  // we'll simulate the connection with a timeout
+  // Connect to a specific room
   const connectToRoom = useCallback((roomId?: string) => {
-    // Clean up any existing connection
-    if (socketRef.current) {
-      socketRef.current.disconnect();
-    }
+    const room = roomId || uuidv4();
     
-    const newRoomId = roomId || uuidv4();
-    const isCreator = !roomId;
-    
-    // In a real implementation, this would connect to an actual WebSocket server
-    setRoomState(prev => ({
-      ...prev,
-      roomId: newRoomId,
-      isConnected: true,
-      isRoomCreator: isCreator,
-      error: null,
-    }));
-    
-    // Simulate connection event
-    setTimeout(() => {
+    try {
+      socketRef.current = io(SERVER_URL, {
+        query: { room },
+        transports: ['websocket']
+      });
+      
+      socketRef.current.on('connect', () => {
+        setRoomState(prev => ({
+          ...prev,
+          isConnected: true,
+          currentRoom: room,
+          error: null
+        }));
+      });
+      
+      socketRef.current.on('disconnect', () => {
+        setRoomState(prev => ({
+          ...prev,
+          isConnected: false
+        }));
+      });
+      
+      socketRef.current.on('translated_audio', (data: { audio: Blob }) => {
+        if (onTranslatedAudio && data.audio) {
+          onTranslatedAudio(data.audio);
+        }
+      });
+      
+      socketRef.current.on('error', (error: string) => {
+        setRoomState(prev => ({
+          ...prev,
+          error
+        }));
+      });
+      
+      return room;
+    } catch (error) {
       setRoomState(prev => ({
         ...prev,
-        participants: isCreator ? [newRoomId] : [roomId as string, newRoomId],
+        error: 'Failed to connect to server'
       }));
-    }, 500);
-    
-    // Return the room ID (useful for creating a new room)
-    return newRoomId;
-  }, []);
+      return null;
+    }
+  }, [onTranslatedAudio]);
   
+  // Disconnect from room
   const disconnectFromRoom = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    
-    if (audioContextRef.current) {
-      audioContextRef.current.close();
-      audioContextRef.current = null;
-    }
-    
     if (socketRef.current) {
       socketRef.current.disconnect();
       socketRef.current = null;
     }
     
+    if (mediaRecorderRef.current && roomState.isRecording) {
+      stopMicrophone();
+    }
+    
     setRoomState({
-      roomId: '',
       isConnected: false,
-      isRoomCreator: false,
-      error: null,
-      participants: [],
+      isRecording: false,
+      currentRoom: null,
+      error: null
     });
-  }, []);
+  }, [roomState.isRecording]);
   
+  // Start recording from microphone
   const startMicrophone = useCallback(async () => {
     try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error('Browser API for audio streaming not supported');
-      }
-      
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
+      setAudioStream(stream);
       
-      // In a real implementation, we would send this audio stream to the server
-      // For demo purposes, we'll just simulate receiving translated audio back
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
       
-      return stream;
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+          
+          // Send the audio chunk to the server
+          if (socketRef.current && socketRef.current.connected) {
+            const audioBlob = new Blob([event.data], { type: 'audio/webm' });
+            socketRef.current.emit('audio_data', {
+              audio: audioBlob,
+              language: targetLanguage,
+              room: roomState.currentRoom
+            });
+          }
+        }
+      };
+      
+      mediaRecorder.start(1000); // Send data every 1000ms
+      
+      setRoomState(prev => ({
+        ...prev,
+        isRecording: true
+      }));
+      
     } catch (error) {
       setRoomState(prev => ({
         ...prev,
-        error: 'Could not access microphone. Please check permissions.',
+        error: 'Failed to access microphone'
       }));
-      return null;
     }
-  }, []);
+  }, [roomState.currentRoom, targetLanguage]);
   
+  // Stop recording
   const stopMicrophone = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
     }
-  }, []);
+    
+    if (audioStream) {
+      audioStream.getTracks().forEach(track => track.stop());
+      setAudioStream(null);
+    }
+    
+    setRoomState(prev => ({
+      ...prev,
+      isRecording: false
+    }));
+  }, [audioStream]);
   
-  // Generate a joining URL for the current room
+  // Get URL for sharing
   const getRoomUrl = useCallback(() => {
-    const baseUrl = window.location.origin;
-    return `${baseUrl}?room=${roomState.roomId}`;
-  }, [roomState.roomId]);
+    if (!roomState.currentRoom) return null;
+    const url = new URL(window.location.href);
+    url.searchParams.set('room', roomState.currentRoom);
+    return url.toString();
+  }, [roomState.currentRoom]);
   
   // Clean up on unmount
   useEffect(() => {
     return () => {
-      disconnectFromRoom();
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
+      
+      if (audioStream) {
+        audioStream.getTracks().forEach(track => track.stop());
+      }
     };
-  }, [disconnectFromRoom]);
+  }, [audioStream]);
   
   return {
     roomState,
@@ -141,6 +187,6 @@ export const useRoomConnection = ({
     startMicrophone,
     stopMicrophone,
     getRoomUrl,
-    audioStream: streamRef.current,
+    audioStream
   };
-};
+}

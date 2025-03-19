@@ -99,5 +99,32 @@ MIT License © 2025 Piotr Slupski
 
 ---
 
-This **README.md** provides a clear overview of the project, setup instructions, tech stack, and roadmap. Let me know if you’d like to customize anything! 🚀
+This **README.md** provides a clear overview of the project, setup instructions, tech stack, and roadmap. Let me know if you'd like to customize anything! 🚀
+
+# Voice Translation App Frontend
+
+This is the React frontend for the Voice Translation application. It provides a user interface for real-time voice translation using WebSockets.
+
+## Available Scripts
+
+In the project directory, you can run:
+
+### `npm start`
+
+Runs the app in the development mode.\
+Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+
+### `npm test`
+
+Launches the test runner in the interactive watch mode.
+
+### `npm run build`
+
+Builds the app for production to the `build` folder.
+
+## Structure
+
+- `src/components/` - UI components
+- `src/services/` - Service layer for API communication
+- `src/tests/` - Test files
 
