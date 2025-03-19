@@ -1,3 +1,4 @@
+@import 'tailwindcss'
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -83,7 +84,6 @@
   }
   
   .glossy-card {
-    @apply rounded-xl border border-opacity-20 shadow-lg;
     background: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(10px);
     transition: all 0.3s ease;
