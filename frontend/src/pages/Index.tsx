@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent } from "@/components/ui/card";
 import { Mic, MicOff, Share2, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,6 @@ const Index = () => {
   const {
     roomState,
     connectToRoom,
-    disconnectFromRoom,
     startMicrophone,
     stopMicrophone,
     getRoomUrl,
@@ -170,7 +169,7 @@ const Index = () => {
           </div>
           
           {currentMode === 'translation' ? (
-            <Card className="overflow-hidden border-0 shadow-lg animate-scale-in">
+            <Card className="overflow-visible border-0 shadow-lg animate-scale-in">
               <CardContent className="p-6 space-y-6">
                 <AudioStatus 
                   isListening={isActive} 
@@ -182,8 +181,8 @@ const Index = () => {
                   audioStream={audioStream}
                 />
                 
-                {/* Language Selector - Ensure pointer-events-auto is applied */}
-                <div className="relative z-10 pointer-events-auto">
+                {/* Fixed Language Selector */}
+                <div className="relative" style={{ zIndex: 50 }}>
                   <LanguageSelector
                     selectedLanguage={targetLanguage}
                     onLanguageChange={handleLanguageChange}
@@ -210,19 +209,19 @@ const Index = () => {
                     )}
                   </Button>
                   
-                  {/* Share Button - Force enable and increase z-index */}
+                  {/* Share Button */}
                   <Button
                     variant="outline"
                     size="icon"
                     onClick={toggleQRCode}
                     disabled={false}
-                    className="z-10 relative pointer-events-auto"
+                    className="relative z-10"
                   >
                     <Share2 className="h-4 w-4" />
                   </Button>
                 </div>
                 
-                {/* QR Code Display - Force visible when toggled */}
+                {/* QR Code Display */}
                 {showQRCode && (
                   <div className="mt-4 p-4 bg-card rounded-lg border animate-fade-in">
                     <div className="flex flex-col items-center gap-4">
@@ -235,7 +234,6 @@ const Index = () => {
                           variant="outline" 
                           size="sm" 
                           onClick={copyRoomLink}
-                          className="pointer-events-auto"
                         >
                           <Copy className="h-4 w-4" />
                         </Button>
