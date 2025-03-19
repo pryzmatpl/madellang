@@ -124,7 +124,7 @@ export class TranslationService extends EventEmitter {
         
         if (data.type === 'connected') {
           this.userId = data.user_id;
-          if (options.onConnected) {
+          if (options.onConnected && this.userId) {
             options.onConnected(this.userId);
           }
           if (options.onStatusChange) {

@@ -161,7 +161,7 @@ export function useRoomConnection({
   
   // Get URL for sharing
   const getRoomUrl = useCallback(() => {
-    if (!roomState.currentRoom) return null;
+    if (!roomState.currentRoom) return '';
     const url = new URL(window.location.href);
     url.searchParams.set('room', roomState.currentRoom);
     return url.toString();

@@ -1,4 +1,4 @@
-
+import React from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useMemo } from 'react';
 import { Button } from '@/components/ui/button';
@@ -7,11 +7,11 @@ import { Check, Copy } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface QRCodeDisplayProps {
-  roomId: string;
-  url: string;
+  roomId: string | null;
+  url: string | null;
 }
 
-const QRCodeDisplay = ({ roomId, url }: QRCodeDisplayProps) => {
+const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({ roomId, url }) => {
   const [copied, setCopied] = useState(false);
   
   const fullUrl = useMemo(() => {
@@ -23,6 +23,8 @@ const QRCodeDisplay = ({ roomId, url }: QRCodeDisplayProps) => {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+  
+  if (!url || !roomId) return null;
   
   return (
     <div className="flex flex-col items-center space-y-6 p-2 animate-fade-in">
@@ -65,7 +67,7 @@ const QRCodeDisplay = ({ roomId, url }: QRCodeDisplayProps) => {
         </div>
         
         <div className="text-xs text-muted-foreground text-center">
-          Room ID: <span className="font-mono">{roomId}</span>
+          Room ID: <span className="font-mono">{roomId.substring(0, 8)}...</span>
         </div>
       </div>
     </div>
