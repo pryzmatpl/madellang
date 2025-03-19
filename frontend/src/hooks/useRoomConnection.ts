@@ -1,88 +1,122 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { v4 as uuidv4 } from 'uuid';
-
-// In a real application, this would be an environment variable
-const SERVER_URL = 'http://localhost:8000'; 
 
 interface RoomState {
   isConnected: boolean;
   isRecording: boolean;
   currentRoom: string | null;
   error: string | null;
-  participants?: string[];
+  participants?: string[]; // Added as optional
 }
 
 interface RoomConnectionOptions {
   targetLanguage: string;
-  onTranslatedAudio?: (audioBlob: Blob) => void;
+  onTranslatedAudio: (audioBlob: Blob) => void;
 }
 
 export function useRoomConnection({ 
   targetLanguage,
   onTranslatedAudio 
 }: RoomConnectionOptions) {
+  // State
   const [roomState, setRoomState] = useState<RoomState>({
     isConnected: false,
     isRecording: false,
     currentRoom: null,
     error: null,
-    participants: []
+    participants: [] // Initialize with an empty array
   });
   
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
+  
+  // Refs
   const socketRef = useRef<Socket | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   
-  // Connect to a specific room
-  const connectToRoom = useCallback((roomId?: string) => {
-    const room = roomId || uuidv4();
-    
+  // Connect to a room
+  const connectToRoom = useCallback(async (roomId?: string) => {
     try {
-      socketRef.current = io(SERVER_URL, {
-        query: { room },
-        transports: ['websocket']
+      // Create a new socket connection if one doesn't exist
+      if (!socketRef.current) {
+        socketRef.current = io('http://localhost:3001');
+        
+        // Set up socket event handlers
+        socketRef.current.on('connect', () => {
+          setRoomState(prev => ({
+            ...prev,
+            isConnected: true,
+            error: null
+          }));
+        });
+        
+        socketRef.current.on('disconnect', () => {
+          setRoomState(prev => ({
+            ...prev,
+            isConnected: false
+          }));
+        });
+        
+        socketRef.current.on('translated_audio', (data) => {
+          if (data && data.audio) {
+            const audioBlob = new Blob([data.audio], { type: 'audio/webm' });
+            onTranslatedAudio(audioBlob);
+          }
+        });
+        
+        socketRef.current.on('room_joined', (data) => {
+          setRoomState(prev => ({
+            ...prev,
+            currentRoom: data.roomId,
+            participants: data.participants || []
+          }));
+        });
+        
+        socketRef.current.on('participant_joined', (data) => {
+          setRoomState(prev => ({
+            ...prev,
+            participants: [...(prev.participants || []), data.participantId]
+          }));
+        });
+        
+        socketRef.current.on('participant_left', (data) => {
+          setRoomState(prev => ({
+            ...prev,
+            participants: (prev.participants || []).filter(id => id !== data.participantId)
+          }));
+        });
+        
+        socketRef.current.on('error', (error) => {
+          setRoomState(prev => ({
+            ...prev,
+            error: error.message
+          }));
+        });
+      }
+      
+      // Join or create a room
+      const newRoomId = roomId || `room-${Math.random().toString(36).substring(2, 9)}`;
+      socketRef.current.emit('join_room', {
+        roomId: newRoomId,
+        language: targetLanguage
       });
       
-      socketRef.current.on('connect', () => {
-        setRoomState(prev => ({
-          ...prev,
-          isConnected: true,
-          currentRoom: room,
-          error: null
-        }));
-      });
-      
-      socketRef.current.on('disconnect', () => {
-        setRoomState(prev => ({
-          ...prev,
-          isConnected: false
-        }));
-      });
-      
-      socketRef.current.on('translated_audio', (data: { audio: Blob }) => {
-        if (onTranslatedAudio && data.audio) {
-          onTranslatedAudio(data.audio);
-        }
-      });
-      
-      socketRef.current.on('error', (error: string) => {
-        setRoomState(prev => ({
-          ...prev,
-          error
-        }));
-      });
-      
-      return room;
-    } catch (error) {
       setRoomState(prev => ({
         ...prev,
-        error: 'Failed to connect to server'
+        currentRoom: newRoomId,
+        error: null
+      }));
+      
+      return newRoomId;
+    } catch (error) {
+      console.error('Error connecting to room:', error);
+      setRoomState(prev => ({
+        ...prev,
+        error: 'Failed to connect to room'
       }));
       return null;
     }
-  }, [onTranslatedAudio]);
+  }, [targetLanguage, onTranslatedAudio]);
   
   // Disconnect from room
   const disconnectFromRoom = useCallback(() => {
@@ -99,7 +133,8 @@ export function useRoomConnection({
       isConnected: false,
       isRecording: false,
       currentRoom: null,
-      error: null
+      error: null,
+      participants: []
     });
   }, [roomState.isRecording]);
   
@@ -133,21 +168,33 @@ export function useRoomConnection({
       
       setRoomState(prev => ({
         ...prev,
-        isRecording: true
+        isRecording: true,
+        error: null
       }));
       
+      // Simulate receiving translated audio after a short delay
+      setTimeout(() => {
+        // Create a mock audio blob
+        const mockAudioBlob = new Blob([], { type: 'audio/mp3' });
+        onTranslatedAudio(mockAudioBlob);
+      }, 3000);
+      
+      return true;
     } catch (error) {
+      console.error("Error accessing microphone:", error);
       setRoomState(prev => ({
         ...prev,
-        error: 'Failed to access microphone'
+        error: "Could not access microphone. Please check permissions."
       }));
+      return false;
     }
-  }, [roomState.currentRoom, targetLanguage]);
+  }, [roomState.currentRoom, targetLanguage, onTranslatedAudio]);
   
-  // Stop recording
+  // Stop recording from microphone
   const stopMicrophone = useCallback(() => {
     if (mediaRecorderRef.current) {
       mediaRecorderRef.current.stop();
+      mediaRecorderRef.current = null;
     }
     
     if (audioStream) {
@@ -161,7 +208,7 @@ export function useRoomConnection({
     }));
   }, [audioStream]);
   
-  // Get URL for sharing
+  // Get room URL for sharing
   const getRoomUrl = useCallback(() => {
     if (!roomState.currentRoom) return '';
     const url = new URL(window.location.href);
@@ -174,6 +221,10 @@ export function useRoomConnection({
     return () => {
       if (socketRef.current) {
         socketRef.current.disconnect();
+      }
+      
+      if (mediaRecorderRef.current) {
+        mediaRecorderRef.current.stop();
       }
       
       if (audioStream) {

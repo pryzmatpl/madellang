@@ -1,41 +1,30 @@
-
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import React from 'react';
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Mic, BookOpen } from "lucide-react";
 
 interface ModeToggleProps {
   currentMode: 'translation' | 'tutor';
   onModeChange: (mode: 'translation' | 'tutor') => void;
 }
 
-const ModeToggle = ({ currentMode, onModeChange }: ModeToggleProps) => {
+const ModeToggle: React.FC<ModeToggleProps> = ({ currentMode, onModeChange }) => {
   return (
-    <div className="flex bg-muted rounded-lg p-1 w-full max-w-xs mx-auto mb-6">
-      <Button
-        variant="ghost"
-        className={cn(
-          "flex-1 rounded-md text-sm font-medium custom-transition",
-          currentMode === 'translation' 
-            ? "bg-background shadow-sm" 
-            : "hover:bg-background/50"
-        )}
-        onClick={() => onModeChange('translation')}
-      >
-        Translation
-      </Button>
-      <Button
-        variant="ghost"
-        className={cn(
-          "flex-1 rounded-md text-sm font-medium custom-transition",
-          currentMode === 'tutor' 
-            ? "bg-background shadow-sm" 
-            : "hover:bg-background/50"
-        )}
-        onClick={() => onModeChange('tutor')}
-      >
-        Language Tutor
-      </Button>
-    </div>
+    <Tabs
+      defaultValue={currentMode}
+      onValueChange={(value) => onModeChange(value as 'translation' | 'tutor')}
+      className="w-full"
+    >
+      <TabsList className="grid grid-cols-2 w-full">
+        <TabsTrigger value="translation" className="flex items-center gap-2">
+          <Mic className="h-4 w-4" />
+          <span>Translation</span>
+        </TabsTrigger>
+        <TabsTrigger value="tutor" className="flex items-center gap-2">
+          <BookOpen className="h-4 w-4" />
+          <span>Language Tutor</span>
+        </TabsTrigger>
+      </TabsList>
+    </Tabs>
   );
 };
 

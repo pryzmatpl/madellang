@@ -1,42 +1,38 @@
-
-import { Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import React from 'react';
+import { Volume2, Volume, VolumeX } from 'lucide-react';
 
 interface AudioStatusProps {
+  isActive?: boolean;
   isSpeaking: boolean;
-  isListening: boolean;
+  isListening?: boolean;
 }
 
-const AudioStatus = ({ isSpeaking, isListening }: AudioStatusProps) => {
+const AudioStatus: React.FC<AudioStatusProps> = ({ 
+  isActive = false, 
+  isSpeaking, 
+  isListening 
+}) => {
+  // Use isListening if provided, otherwise use isActive
+  const listening = isListening !== undefined ? isListening : isActive;
+  
   return (
-    <div className="flex items-center justify-center space-x-6">
-      <div className="flex flex-col items-center">
-        <div 
-          className={cn(
-            "flex items-center justify-center w-12 h-12 rounded-full",
-            isListening 
-              ? "bg-green-100 text-green-600 animate-pulse-opacity" 
-              : "bg-muted text-muted-foreground"
-          )}
-        >
-          {isListening ? <Mic size={22} /> : <MicOff size={22} />}
-        </div>
-        <span className="text-xs mt-1">Input</span>
-      </div>
-      
-      <div className="flex flex-col items-center">
-        <div 
-          className={cn(
-            "flex items-center justify-center w-12 h-12 rounded-full",
-            isSpeaking 
-              ? "bg-blue-100 text-blue-600 animate-pulse-opacity" 
-              : "bg-muted text-muted-foreground"
-          )}
-        >
-          {isSpeaking ? <Volume2 size={22} /> : <VolumeX size={22} />}
-        </div>
-        <span className="text-xs mt-1">Output</span>
-      </div>
+    <div className="flex items-center gap-2 text-sm text-muted-foreground py-1">
+      {listening && isSpeaking ? (
+        <>
+          <Volume2 className="h-4 w-4 text-green-500 animate-pulse" />
+          <span>Translating audio...</span>
+        </>
+      ) : listening ? (
+        <>
+          <Volume className="h-4 w-4 text-blue-500" />
+          <span>Waiting for speech...</span>
+        </>
+      ) : (
+        <>
+          <VolumeX className="h-4 w-4 text-gray-400" />
+          <span>Microphone off</span>
+        </>
+      )}
     </div>
   );
 };
