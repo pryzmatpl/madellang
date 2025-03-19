@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/popover";
 
 const languages = [
+  { value: "en", label: "English" },
   { value: "es", label: "Spanish" },
   { value: "fr", label: "French" },
   { value: "de", label: "German" },
@@ -23,6 +24,7 @@ const languages = [
   { value: "pt", label: "Portuguese" },
   { value: "zh", label: "Chinese" },
   { value: "ja", label: "Japanese" },
+  { value: "pl", label: "Polish" },
 ];
 
 interface LanguageSelectorProps {
@@ -60,7 +62,7 @@ const LanguageSelector: React.FC<LanguageSelectorProps> = ({
           disabled={disabled}
         >
           {selectedLanguageObj ? selectedLanguageObj.label : "Select language..."}
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0" />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-full p-0">
