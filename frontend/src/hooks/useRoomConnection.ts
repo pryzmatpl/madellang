@@ -10,6 +10,7 @@ interface RoomState {
   isRecording: boolean;
   currentRoom: string | null;
   error: string | null;
+  participants?: string[];
 }
 
 interface RoomConnectionOptions {
@@ -25,7 +26,8 @@ export function useRoomConnection({
     isConnected: false,
     isRecording: false,
     currentRoom: null,
-    error: null
+    error: null,
+    participants: []
   });
   
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null);

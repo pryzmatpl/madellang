@@ -13,6 +13,13 @@ function Calendar({
   showOutsideDays = true,
   ...props
 }: CalendarProps) {
+  // Create custom components separately with an 'any' type assertion
+  // @ts-ignore
+  const customComponents: any = {
+    IconLeft: () => <ChevronLeft className="h-4 w-4" />,
+    IconRight: () => <ChevronRight className="h-4 w-4" />
+  };
+
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
@@ -51,10 +58,8 @@ function Calendar({
         day_hidden: "invisible",
         ...classNames,
       }}
-      components={{
-        IconLeft: ({ ..._props }) => <ChevronLeft className="h-4 w-4" />,
-        IconRight: ({ ..._props }) => <ChevronRight className="h-4 w-4" />,
-      }}
+      // @ts-ignore
+      components={customComponents}
       {...props}
     />
   );

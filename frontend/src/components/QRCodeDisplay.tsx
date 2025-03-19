@@ -1,22 +1,17 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { useMemo } from 'react';
-import { Button } from '@/components/ui/button';
-import { useState } from 'react';
-import { Check, Copy } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Copy, Check } from 'lucide-react';
 
 interface QRCodeDisplayProps {
   roomId: string | null;
-  url: string | null;
+  url: string;
 }
 
 const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({ roomId, url }) => {
   const [copied, setCopied] = useState(false);
   
-  const fullUrl = useMemo(() => {
-    return url;
-  }, [url]);
+  // Make sure we have a valid string URL
+  const fullUrl = url || '';
   
   const copyToClipboard = () => {
     navigator.clipboard.writeText(fullUrl);
@@ -24,50 +19,40 @@ const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({ roomId, url }) => {
     setTimeout(() => setCopied(false), 2000);
   };
   
-  if (!url || !roomId) return null;
+  if (!roomId) return null;
   
   return (
-    <div className="flex flex-col items-center space-y-6 p-2 animate-fade-in">
-      <div className="text-center space-y-1">
-        <h2 className="text-xl font-medium">Room QR Code</h2>
-        <p className="text-sm text-muted-foreground">
-          Scan to join this translation room
-        </p>
-      </div>
+    <div className="flex flex-col items-center space-y-4">
+      <h3 className="text-sm font-medium">Share this QR code to join the room</h3>
       
       <div className="qr-container bg-white p-4 rounded-lg">
         <QRCodeSVG
-          value={fullUrl}
+          value={fullUrl} 
           size={200}
           level="H"
           includeMargin={true}
-          className="transition-all duration-300"
         />
       </div>
       
-      <div className="w-full max-w-sm space-y-2">
-        <div className="relative">
+      <div className="room-id text-sm text-center">
+        <span className="font-medium">Room ID:</span> {roomId.substring(0, 8)}...
+      </div>
+      
+      <div className="relative w-full max-w-md">
+        <div className="flex items-center">
           <input
             type="text"
             value={fullUrl}
             readOnly
             className="w-full pr-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
           />
-          <Button
-            size="icon"
-            variant="ghost"
-            className={cn(
-              "absolute right-0 top-0 h-full aspect-square text-muted-foreground",
-              copied && "text-green-500"
-            )}
+          <button 
             onClick={copyToClipboard}
+            className="absolute right-0 h-full px-3 text-gray-500 hover:text-gray-700"
+            aria-label="Copy to clipboard"
           >
-            {copied ? <Check size={16} /> : <Copy size={16} />}
-          </Button>
-        </div>
-        
-        <div className="text-xs text-muted-foreground text-center">
-          Room ID: <span className="font-mono">{roomId.substring(0, 8)}...</span>
+            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+          </button>
         </div>
       </div>
     </div>

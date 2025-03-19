@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent } from "@/components/ui/card";
 import { Mic, MicOff, Share2 } from "lucide-react";
@@ -60,23 +59,17 @@ const Index = () => {
     } else {
       // If not connected to a room yet, create one
       if (!roomState.isConnected) {
-        const roomId = connectToRoom();
-        toast({
-          title: "Room Created",
-          description: `Your translation room is ready. ID: ${roomId.substring(0, 8)}...`,
-        });
+        const roomId = await connectToRoom();
+        if (roomId) {
+          toast({
+            title: "Room Created",
+            description: `Your translation room is ready. ID: ${roomId.substring(0, 8)}...`,
+          });
+        }
       }
       
-      const stream = await startMicrophone();
-      if (stream) {
-        setIsActive(true);
-      } else {
-        toast({
-          variant: "destructive",
-          title: "Microphone Error",
-          description: "Could not access microphone. Please check permissions.",
-        });
-      }
+      await startMicrophone();
+      setIsActive(true); // Always set to true after calling startMicrophone
     }
   };
   
@@ -92,6 +85,31 @@ const Index = () => {
     }
     setCurrentMode(mode);
     setShowQRCode(false);
+  };
+  
+  const handleStartSession = async () => {
+    try {
+      // Connect to a room if not already connected
+      if (!roomState.isConnected) {
+        const roomId = await connectToRoom();
+        if (roomId) {
+          toast({
+            title: "Room Created",
+            description: `Your translation room is ready. ID: ${roomId.substring(0, 8)}...`,
+          });
+        }
+      }
+      
+      await startMicrophone();
+      setIsActive(true); // Always set to true after calling startMicrophone
+    } catch (error) {
+      console.error("Error starting session:", error);
+      toast({
+        variant: "destructive",
+        title: "Microphone Error",
+        description: "Could not access your microphone. Please check permissions.",
+      });
+    }
   };
   
   return (
@@ -136,7 +154,7 @@ const Index = () => {
                 
                 <div className="flex gap-3">
                   <Button 
-                    onClick={handleStartStop} 
+                    onClick={handleStartSession} 
                     className={cn(
                       "flex-1 custom-transition",
                       isActive ? "bg-red-500 hover:bg-red-600" : "bg-primary hover:bg-primary/90"
@@ -170,13 +188,13 @@ const Index = () => {
                 {showQRCode && roomState.isConnected && (
                   <div className="pt-4 border-t animate-fade-in">
                     <QRCodeDisplay 
-                      roomId={roomState.roomId} 
+                      roomId={roomState.currentRoom} 
                       url={getRoomUrl()} 
                     />
                   </div>
                 )}
                 
-                {roomState.participants.length > 1 && (
+                {roomState.participants && roomState.participants.length > 1 && (
                   <div className="text-sm text-center text-muted-foreground pt-2">
                     {roomState.participants.length} participants in room
                   </div>
