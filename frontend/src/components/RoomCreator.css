@@ -1,0 +1,116 @@
+.room-creator {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 20px;
+  background-color: #f9f9f9;
+  border-radius: 10px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.room-creator h2 {
+  text-align: center;
+  margin-bottom: 25px;
+  color: #333;
+}
+
+.join-room {
+  margin-bottom: 20px;
+}
+
+.input-group {
+  display: flex;
+  gap: 10px;
+}
+
+.input-group input {
+  flex-grow: 1;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 16px;
+}
+
+.input-group button {
+  padding: 10px 20px;
+  background-color: #2196F3;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.input-group button:disabled {
+  background-color: #bbdefb;
+  cursor: not-allowed;
+}
+
+.or-divider {
+  display: flex;
+  align-items: center;
+  margin: 20px 0;
+}
+
+.or-divider::before,
+.or-divider::after {
+  content: "";
+  flex-grow: 1;
+  height: 1px;
+  background-color: #ddd;
+}
+
+.or-divider span {
+  padding: 0 15px;
+  color: #666;
+  font-size: 14px;
+}
+
+.create-room {
+  margin-bottom: 30px;
+}
+
+.create-button {
+  width: 100%;
+  padding: 12px;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.recent-rooms {
+  border-top: 1px solid #eee;
+  padding-top: 20px;
+}
+
+.recent-rooms h3 {
+  margin-bottom: 15px;
+  color: #555;
+  font-size: 18px;
+}
+
+.recent-rooms ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.recent-rooms li {
+  margin-bottom: 10px;
+}
+
+.recent-room-button {
+  width: 100%;
+  padding: 10px;
+  background-color: #f1f1f1;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.recent-room-button:hover {
+  background-color: #e0e0e0;
+} 

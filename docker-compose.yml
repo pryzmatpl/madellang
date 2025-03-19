@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    environment:
+      - REACT_APP_BACKEND_URL=http://localhost:8000
+    networks:
+      - voice-translate-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.amd
+    ports:
+      - "8000:8000"
+    environment:
+      - WHISPER_MODEL=small
+      - HSA_OVERRIDE_GFX_VERSION=10.3.0
+      - AMD_SERIALIZE_KERNEL=3
+      - PYTORCH_HIP_ALLOC_CONF=max_split_size_mb:128
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    networks:
+      - voice-translate-network
+
+networks:
+  voice-translate-network:
+    driver: bridge 
