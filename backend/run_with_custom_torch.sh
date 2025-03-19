@@ -12,6 +12,12 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/rocm/lib
 
 # Add custom PyTorch to Python path
 export PYTHONPATH=$(pwd)/deps/pytorch:$PYTHONPATH
+export AMD_SERIALIZE_KERNEL=3
+export PYTORCH_HIP_ALLOC_CONF="max_split_size_mb:128"
+export WHISPER_MODEL="medium"  # Force smaller model
+
+# Clear GPU memory cache
+python -c "import torch; torch.cuda.empty_cache()" || true
 
 # Run the server with a single worker to avoid GPU memory issues
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload --workers 1 
