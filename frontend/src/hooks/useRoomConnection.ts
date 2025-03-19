@@ -209,7 +209,7 @@ export function useRoomConnection({
   }, [audioStream]);
   
   // Get room URL for sharing
-  const getRoomUrl = useCallback(() => {
+  const getRoomConnectionUrl = useCallback(() => {
     if (!roomState.currentRoom) return '';
     const url = new URL(window.location.href);
     url.searchParams.set('room', roomState.currentRoom);
@@ -239,7 +239,7 @@ export function useRoomConnection({
     disconnectFromRoom,
     startMicrophone,
     stopMicrophone,
-    getRoomUrl,
+    getRoomUrl: getRoomConnectionUrl,
     audioStream
   };
 }
