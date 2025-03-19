@@ -23,11 +23,6 @@ from audio_processor import AudioProcessor
 from model_manager import ModelManager
 from translation_service import TranslationService
 
-# Now use whisper as usual
-model = whisper.load_model("turbo")
-result = model.transcribe("./data/test/test.m4a")
-print(result["text"])
-
 app = FastAPI()
 
 # Add CORS to allow connections from your frontend
@@ -59,34 +54,38 @@ async def root():
     return {"message": "Voice Translation API is running"}
 
 @app.websocket("/ws/{room_id}")
-async def websocket_endpoint(websocket: WebSocket, room_id: str, target_lang: str = "es"):
-    """
-    Handle WebSocket connections for a specific room
-    """
-    # Accept the connection
+async def websocket_endpoint(websocket: WebSocket, room_id: str):
+    # Get target language from query parameters
+    target_lang = websocket.query_params.get("target_lang", "en")
+    
+    # Accept connection
     await websocket.accept()
     
-    # Generate a unique participant ID
-    participant_id = str(uuid.uuid4())
+    # Generate user ID
+    user_id = str(uuid.uuid4())
+    
+    # Add to room
+    room_manager.add_participant(room_id, user_id, websocket)
     
     try:
-        # Add the participant to the room
-        await room_manager.add_participant(room_id, participant_id, websocket, target_lang)
-        
-        # Event loop to handle incoming messages
         while True:
-            # Receive binary audio data
-            audio_data = await websocket.receive_bytes()
+            # Receive audio chunk
+            audio_chunk = await websocket.receive_bytes()
             
-            # Process the audio in the room
-            await room_manager.process_audio(room_id, participant_id, audio_data)
+            # Process chunk
+            result = await audio_processor.process_audio_chunk(
+                room_id, user_id, audio_chunk, target_lang
+            )
             
+            # If we have a result, send to all other participants
+            if result and result.get("translated_text"):
+                # You might want to convert text to speech here
+                # Then broadcast to other participants
+                await room_manager.broadcast(
+                    room_id, user_id, result["translated_text"], is_binary=False
+                )
     except WebSocketDisconnect:
-        # Remove participant when disconnected
-        await room_manager.remove_participant(room_id, participant_id)
-    except Exception as e:
-        print(f"Error: {e}")
-        await room_manager.remove_participant(room_id, participant_id)
+        room_manager.remove_participant(room_id, user_id)
 
 @app.get("/create-room")
 async def create_room():

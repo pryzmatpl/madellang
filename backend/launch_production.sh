@@ -14,7 +14,7 @@ if [ -d "venv" ]; then
 fi
 
 # Set environment variables for ROCm
-export HSA_OVERRIDE_GFX_VERSION=10.3.0  # Change to match your GPU
+export HSA_OVERRIDE_GFX_VERSION=11.0.0  # Change to match your GPU
 export PYTORCH_HIP_ALLOC_CONF="max_split_size_mb:512"
 export HIP_VISIBLE_DEVICES=0  # Use first GPU
 

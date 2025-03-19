@@ -3,7 +3,7 @@
 source venv/bin/activate
 
 # Set environment variables for ROCm
-export HSA_OVERRIDE_GFX_VERSION=10.3.0  # Set to your GPU architecture version
+export HSA_OVERRIDE_GFX_VERSION=11.0.0  # Set to your GPU architecture version
 export PYTORCH_HIP_ALLOC_CONF="max_split_size_mb:512"
 export HIP_VISIBLE_DEVICES=0  # Use first GPU
 

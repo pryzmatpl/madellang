@@ -5,6 +5,7 @@ import io
 import torch
 from pathlib import Path
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, MarianMTModel, MarianTokenizer
+import whisper
 
 class ModelManager:
     def __init__(self):
@@ -21,8 +22,7 @@ class ModelManager:
         """Initialize local AI models"""
         try:
             # Speech-to-Text (Whisper)
-            import whisper
-            self.stt_model = whisper.load_model("small")
+            self.stt_model = whisper.load_model("medium")
             
             # Translation (MarianMT from HuggingFace)
             self.translation_models = {}
