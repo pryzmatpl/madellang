@@ -80,3 +80,20 @@ class RoomManager:
                 await recipient.send_bytes(translated_audio)
             except Exception as e:
                 print(f"Error sending translated audio: {e}")
+
+    async def broadcast(self, room_id: str, sender_id: str, message, is_binary=True):
+        """Broadcast a message to all participants in a room except the sender"""
+        if room_id not in self.rooms:
+            return
+        
+        for participant_id, participant in self.rooms[room_id].items():
+            if participant_id != sender_id and participant.room_id == room_id:
+                try:
+                    if is_binary:
+                        await participant.send_bytes(message)
+                    else:
+                        await participant.send_json(message)
+                except Exception as e:
+                    print(f"Error broadcasting to participant {participant_id}: {e}")
+                    # Remove participant if they disconnected
+                    await self.remove_participant(room_id, participant_id)

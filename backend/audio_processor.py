@@ -2,6 +2,7 @@ import asyncio
 import io
 import numpy as np
 from typing import Optional, Dict
+import time
 
 class AudioProcessor:
     def __init__(self, model_manager, translation_service=None):
@@ -10,6 +11,10 @@ class AudioProcessor:
         # Audio settings
         self.sample_rate = 16000
         self.chunk_size = 4096
+        # Add buffer management
+        self.buffer = {}  # room_id -> user_id -> buffer
+        self.last_processing = {}  # room_id -> user_id -> timestamp
+        self.min_process_interval = 0.5  # Minimum seconds between processing
     
     async def process_audio(self, audio_data: bytes, target_lang: str, source_lang: Optional[str] = None) -> bytes:
         """
@@ -73,3 +78,65 @@ class AudioProcessor:
         except Exception as e:
             print(f"Error in audio processing: {e}")
             return b""
+
+    async def process_audio_chunk(self, room_id: str, user_id: str, audio_chunk: bytes, target_lang: str) -> Dict:
+        """
+        Process an incoming audio chunk, buffering as needed
+        
+        Returns a dict with translation results when enough audio has been collected,
+        otherwise returns None
+        """
+        # Initialize buffer if needed
+        if room_id not in self.buffer:
+            self.buffer[room_id] = {}
+            self.last_processing[room_id] = {}
+            
+        if user_id not in self.buffer[room_id]:
+            self.buffer[room_id][user_id] = []
+            self.last_processing[room_id][user_id] = 0
+            
+        # Add chunk to buffer
+        self.buffer[room_id][user_id].append(audio_chunk)
+        
+        # Calculate total buffered audio size
+        total_size = sum(len(chunk) for chunk in self.buffer[room_id][user_id])
+        
+        # Check if we should process now (enough data + minimum interval passed)
+        current_time = time.time()
+        time_since_last = current_time - self.last_processing[room_id].get(user_id, 0)
+        
+        should_process = (
+            total_size >= self.chunk_size * 3 and  # At least 3 chunks (~750ms of audio)
+            time_since_last >= self.min_process_interval  # Don't process too frequently
+        )
+        
+        if should_process:
+            # Concatenate all chunks
+            all_audio = b''.join(self.buffer[room_id][user_id])
+            
+            # Clear buffer but save a small tail to prevent cutting words
+            tail_size = min(len(all_audio) // 4, self.chunk_size)  # Keep up to 1/4 of the buffer
+            tail = all_audio[-tail_size:] if tail_size > 0 else b''
+            self.buffer[room_id][user_id] = [tail] if tail else []
+            
+            # Update processing timestamp
+            self.last_processing[room_id][user_id] = current_time
+            
+            # Process the audio (uses existing process_audio method)
+            # Get source language from room manager if available
+            source_lang = None  # This would come from room manager in a real implementation
+            
+            # Actually process the audio
+            translated_audio = await self.process_audio(all_audio, target_lang, source_lang)
+            
+            # Return text result for now - we'll modify the room_manager to handle audio
+            if translated_audio and len(translated_audio) > 0:
+                # In a real implementation, you'd extract the text from somewhere
+                # For now, let's return a dummy structure that main.py expects
+                return {
+                    "translated_text": "Audio processed successfully",
+                    "audio_data": translated_audio
+                }
+        
+        # Not enough data to process yet
+        return None

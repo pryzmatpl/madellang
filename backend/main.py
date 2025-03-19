@@ -1,27 +1,38 @@
 import sys
+# Add the deps directory to the Python path
+sys.path.insert(0, "./deps")
+
+# Import the custom torch loader to set up paths
+from torch_loader import get_device_info
+
+# Import other dependencies
 sys.path.append("./deps/whisper")
-sys.path.append("./deps/pytorch")
 sys.path.append("./deps/audio")
+
 import whisper
-import torchaudio
 import torch
-print(whisper.__version__)  # Should print the version or commit hash
-print(torchaudio.__version__)
-print(torch.__version__)
-from fastapi.openapi.utils import get_openapi
+import torchaudio
+
+# Print diagnostic information
+torch_info = get_device_info()
+print(f"PyTorch version: {torch_info['version']}")
+print(f"ROCm version: {torch_info['rocm_version']}")
+print(f"Device available: {torch_info['device_name']}")
+print(f"Whisper version: {whisper.__version__}")
 
 import uuid
 import asyncio
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, List, Optional
-import numpy as np
 from pydantic import BaseModel
+from pathlib import Path
 
 from room_manager import RoomManager
 from audio_processor import AudioProcessor
 from model_manager import ModelManager
 from translation_service import TranslationService
+from model_selector import select_appropriate_whisper_model
 
 app = FastAPI()
 
@@ -133,5 +144,34 @@ def custom_openapi():
 
 app.openapi = custom_openapi
 
+@app.get("/system-info")
+async def system_info():
+    """Return information about the system configuration"""
+    info = {
+        "pytorch_version": torch.__version__,
+        "cuda_available": torch.cuda.is_available(),
+        "whisper_version": whisper.__version__,
+    }
+    
+    # Add GPU info if available
+    if torch.cuda.is_available():
+        try:
+            info["device_name"] = torch.cuda.get_device_name(0)
+            info["device_count"] = torch.cuda.device_count()
+            info["cuda_version"] = torch.version.cuda
+            
+            # Check if it's actually an AMD GPU
+            if hasattr(torch.version, 'hip') and torch.version.hip:
+                info["gpu_type"] = "AMD (ROCm/HIP)"
+                info["rocm_version"] = torch.version.hip
+            else:
+                info["gpu_type"] = "NVIDIA (CUDA)"
+        except Exception as e:
+            info["gpu_error"] = str(e)
+    
+    # Add selected model info
+    info["whisper_model"] = select_appropriate_whisper_model()
+    
+    return info
 
 # Run with: uvicorn main:app --host 0.0.0.0 --port 8000

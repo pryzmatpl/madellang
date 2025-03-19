@@ -1,30 +1,60 @@
 import torch
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 def select_appropriate_whisper_model():
-    """Select a Whisper model size appropriate for the available GPU memory"""
-    
-    # If a specific model is requested via environment variable, use that
+    """
+    Select an appropriate Whisper model size based on available GPU memory
+    and environment configuration.
+    """
+    # Check if model is explicitly specified via environment variable
     if "WHISPER_MODEL" in os.environ:
-        return os.environ["WHISPER_MODEL"]
+        model_name = os.environ["WHISPER_MODEL"]
+        logger.info(f"Using model specified in environment: {model_name}")
+        return model_name
     
-    # Check if GPU is available
+    # Check if we're on CPU
     if not torch.cuda.is_available():
-        return "tiny"  # Use tiny model for CPU
-        
-    # Get GPU memory in GB
-    try:
-        gpu_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-        
-        # Choose model based on available memory
-        if gpu_memory > 16:
-            return "large"
-        elif gpu_memory > 10:
-            return "medium"
-        elif gpu_memory > 5:
-            return "small"
-        else:
+        logger.info("No GPU available, using 'tiny' model")
+        return "tiny"
+    
+    # If we're running on an AMD GPU with HIP, be conservative
+    if hasattr(torch.version, 'hip') and torch.version.hip is not None:
+        try:
+            # Try to get GPU memory
+            gpu_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)  # GB
+            
+            # AMD GPUs often need more headroom, so be conservative
+            if gpu_memory > 16:
+                model_name = "small"  # Use small instead of medium for stability
+            elif gpu_memory > 8:
+                model_name = "small"
+            else:
+                model_name = "tiny"
+                
+            logger.info(f"AMD GPU with {gpu_memory:.1f} GB, selected model: {model_name}")
+            return model_name
+        except Exception as e:
+            logger.warning(f"Error getting GPU properties: {e}, falling back to tiny model")
             return "tiny"
+    
+    # NVIDIA GPU - can be a bit more aggressive with model sizes
+    try:
+        gpu_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)  # GB
+        
+        if gpu_memory > 16:
+            model_name = "large"
+        elif gpu_memory > 10:
+            model_name = "medium"
+        elif gpu_memory > 5:
+            model_name = "small"
+        else:
+            model_name = "tiny"
+            
+        logger.info(f"NVIDIA GPU with {gpu_memory:.1f} GB, selected model: {model_name}")
+        return model_name
     except Exception as e:
-        print(f"Error detecting GPU memory: {e}. Defaulting to tiny model.")
+        logger.warning(f"Error getting GPU properties: {e}, falling back to tiny model")
         return "tiny" 

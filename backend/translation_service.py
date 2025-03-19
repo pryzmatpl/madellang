@@ -1,13 +1,48 @@
 import whisper
 import torch
 from typing import Dict, List, Optional
+from model_selector import select_appropriate_whisper_model
+import logging
+
+logger = logging.getLogger(__name__)
 
 class TranslationService:
     def __init__(self):
         """Initialize the translation service using Whisper"""
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        print(f"Loading Whisper model for translation on {self.device}")
-        self.model = whisper.load_model("medium", device=self.device)
+        # Determine device with proper error handling for AMD GPUs
+        if torch.cuda.is_available():
+            try:
+                # Test tensor operation
+                test_tensor = torch.zeros(1, device="cuda")
+                # If we get here, CUDA/HIP is working
+                self.device = "cuda"
+                logger.info(f"Using GPU: {torch.cuda.get_device_name(0)}")
+            except Exception as e:
+                logger.warning(f"GPU error: {e}, falling back to CPU")
+                self.device = "cpu"
+        else:
+            self.device = "cpu"
+            logger.info("No GPU available, using CPU")
+        
+        # Select appropriate model size
+        model_name = select_appropriate_whisper_model()
+        logger.info(f"Loading Whisper model '{model_name}' for translation on {self.device}")
+        
+        # Attempt to load the model with error handling
+        try:
+            self.model = whisper.load_model(model_name, device=self.device)
+            logger.info(f"Successfully loaded {model_name} model")
+        except Exception as e:
+            logger.error(f"Error loading {model_name} model: {e}")
+            # Try fallback to tiny model on CPU if GPU loading failed
+            if self.device == "cuda" and model_name != "tiny":
+                logger.info("Attempting fallback to tiny model on CPU")
+                self.device = "cpu"
+                self.model = whisper.load_model("tiny", device="cpu")
+            else:
+                # Re-raise if we're already trying the smallest model
+                raise
+                
         # Languages Whisper can handle
         self.supported_languages = list(whisper.tokenizer.LANGUAGES.keys())
         
