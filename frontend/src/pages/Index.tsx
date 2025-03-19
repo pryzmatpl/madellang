@@ -53,6 +53,21 @@ const Index = () => {
     }
   }, [roomIdFromUrl, connectToRoom, toast]);
   
+  // Handle language change
+  const handleLanguageChange = useCallback((newLanguage: string) => {
+    setTargetLanguage(newLanguage);
+    
+    // Restart the session if active to apply the new language
+    if (isActive) {
+      stopMicrophone();
+      toast({
+        title: "Language Changed",
+        description: `Switching to ${newLanguage}. Please restart recording.`,
+      });
+      setIsActive(false);
+    }
+  }, [isActive, stopMicrophone, toast]);
+  
   const handleStartSession = async () => {
     try {
       if (isActive) {
@@ -86,19 +101,19 @@ const Index = () => {
   };
   
   // Toggle QR code visibility
-  const toggleQRCode = useCallback(() => {
-    setShowQRCode(!showQRCode);
-  }, [showQRCode]);
+  const toggleQRCode = () => {
+    setShowQRCode(prev => !prev);
+  };
   
   // Copy room link to clipboard
-  const copyRoomLink = useCallback(() => {
+  const copyRoomLink = () => {
     const url = getRoomUrl();
     navigator.clipboard.writeText(url);
     toast({
       title: "Link Copied",
       description: "Room link copied to clipboard",
     });
-  }, [getRoomUrl, toast]);
+  };
   
   const handleModeChange = (mode: 'translation' | 'tutor') => {
     if (isActive) {
@@ -157,7 +172,7 @@ const Index = () => {
               
               <LanguageSelector
                 selectedLanguage={targetLanguage}
-                onLanguageChange={setTargetLanguage}
+                onLanguageChange={handleLanguageChange}
                 disabled={isActive}
               />
               
