@@ -65,16 +65,18 @@ const LanguageSelector: React.FC<LanguageSelectorProps> = ({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-full p-0">
-        <Command>
+      <PopoverContent className="w-full p-0 z-[100]">
+        <Command className="w-full">
           <CommandInput placeholder="Search language..." />
           <CommandEmpty>No language found.</CommandEmpty>
-          <CommandGroup>
+          <CommandGroup className="max-h-[200px] overflow-auto">
             {languages.map((language) => (
               <CommandItem
                 key={language.value}
                 value={language.value}
+                className="cursor-pointer hover:bg-accent"
                 onSelect={(currentValue) => {
+                  console.log("Language selected:", currentValue);
                   handleChange(currentValue);
                   setOpen(false);
                 }}

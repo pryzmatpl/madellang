@@ -52,7 +52,7 @@ const Index = () => {
     }
   }, [roomIdFromUrl, connectToRoom, toast]);
   
-  // Handle language change
+  // Handle language change - using value directly
   const handleLanguageChange = (newLanguage: string) => {
     console.log("Language changed to:", newLanguage);
     setTargetLanguage(newLanguage);
@@ -102,14 +102,12 @@ const Index = () => {
   
   // Toggle QR code visibility
   const toggleQRCode = () => {
-    console.log("Toggling QR code, current state:", showQRCode);
     setShowQRCode(prevState => !prevState);
   };
   
   // Copy room link to clipboard
   const copyRoomLink = () => {
     const url = getRoomUrl();
-    console.log("Copying URL:", url);
     navigator.clipboard.writeText(url);
     toast({
       title: "Link Copied",
@@ -181,11 +179,11 @@ const Index = () => {
                   audioStream={audioStream}
                 />
                 
-                {/* Fixed Language Selector */}
+                {/* Fixed Language Selector: Using value/onChange instead of selectedLanguage */}
                 <div className="relative" style={{ zIndex: 50 }}>
                   <LanguageSelector
-                    selectedLanguage={targetLanguage}
-                    onLanguageChange={handleLanguageChange}
+                    value={targetLanguage}
+                    onChange={handleLanguageChange}
                     disabled={false}
                   />
                 </div>
