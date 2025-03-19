@@ -3,6 +3,18 @@ import translationService from '../services/TranslationService';
 import AudioPlayer from './AudioPlayer';
 import RecordingIndicator from './RecordingIndicator';
 import './TranslationRoom.css';
+import { Card, CardContent } from "@/components/ui/card";
+import { Mic, MicOff, Share2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/use-toast";
+import QRCodeDisplay from "@/components/QRCodeDisplay";
+import LanguageSelector from "@/components/LanguageSelector";
+import AudioVisualizer from "@/components/AudioVisualizer";
+import AudioStatus from "@/components/AudioStatus";
+import { useRoomConnection } from "@/hooks/useRoomConnection";
+import { cn } from "@/lib/utils";
+import ModeToggle from "@/components/ModeToggle";
+import LanguageTutor from "@/components/LanguageTutor";
 
 interface Language {
   code: string;
