@@ -86,53 +86,42 @@ async def websocket_test(websocket: WebSocket):
 
 @app.websocket("/ws/{room_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str):
-    # Accept the connection
     await websocket.accept()
     logger.info(f"Connection accepted for room {room_id}")
     
     # Get target language from query parameters
     target_lang = websocket.query_params.get("target_lang", "en") 
-    
-    # Generate user ID
     user_id = str(uuid.uuid4())
     
     try:
-        # Add to room
         await room_manager.add_participant(room_id, websocket, target_lang)
         logger.info(f"User {user_id} joined room {room_id}")
         
-        # Notify client about successful connection
+        # Send initial connection success message
         await websocket.send_json({
             "type": "connection_established",
             "room_id": room_id,
             "user_id": user_id
         })
         
-        # Broadcast participant count
-        await room_manager.broadcast_participant_count(room_id)
-        
         # Handle messages
         while True:
             try:
-                # Use receive instead of receive_bytes to handle different message types
                 message = await websocket.receive()
                 
-                # Check if this is a text message (command) or binary (audio)
+                if not message:  # Add null check
+                    continue
+                    
                 if "text" in message:
-                    # Handle text commands
                     try:
                         cmd = json.loads(message["text"])
                         if cmd.get("type") == "ping":
                             await websocket.send_json({"type": "pong"})
-                    except:
-                        logger.warning(f"Could not parse message: {message['text'][:50]}")
+                    except json.JSONDecodeError:
+                        continue
                         
                 elif "bytes" in message:
-                    # Process audio data
                     audio_data = message["bytes"]
-                    logger.debug(f"Received audio chunk: {len(audio_data)} bytes")
-                    
-                    # Process the audio chunk
                     result = await audio_processor.process_audio_chunk(
                         room_id=room_id,
                         user_id=user_id,
@@ -140,32 +129,23 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                         target_lang=target_lang
                     )
                     
-                    # Echo processed audio or translation results
                     if result:
                         if "audio" in result:
-                            # Send binary audio data
                             await websocket.send_bytes(result["audio"])
-                            logger.debug(f"Sent audio response: {len(result['audio'])} bytes")
                         else:
-                            # Send translation data
                             await room_manager.broadcast_translation(room_id, websocket, result)
-            
+                            
             except WebSocketDisconnect:
-                # Break out of the loop entirely on disconnect
                 logger.info(f"WebSocket disconnected for user {user_id}")
                 break
                 
             except Exception as e:
-                logger.error(f"Error in WebSocket message loop: {e}")
-                # Don't try to continue if we hit a critical error
-                if "Cannot call" in str(e) and "disconnect" in str(e):
+                logger.error(f"Error processing message: {str(e)}")
+                if "disconnect" in str(e):
                     break
-    
-    except Exception as e:
-        logger.error(f"WebSocket error: {e}")
-    
+                continue
+                
     finally:
-        # Clean up
         await room_manager.remove_participant(room_id, websocket)
         logger.info(f"User {user_id} left room {room_id}")
 

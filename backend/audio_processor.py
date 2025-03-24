@@ -89,35 +89,21 @@ class AudioProcessor:
                                  audio_chunk: bytes, target_lang: str) -> Optional[Dict]:
         """Process incoming audio chunk and return translation result"""
         try:
-            # Skip processing if another chunk from same user is being processed
-            lock_key = f"{room_id}_{user_id}"
-            if lock_key in self.processing_lock and self.processing_lock[lock_key]:
-                # Just store the chunk for future processing
-                self._add_to_buffer(room_id, user_id, audio_chunk)
-                return None
-            
-            # Set processing lock
-            self.processing_lock[lock_key] = True
-            
-            # If in mirror mode, just return the audio without processing
+            # If mirror mode is enabled, just return the audio
             if self.mirror_mode:
-                logger.debug(f"Mirror mode: echoing audio for user {user_id}")
                 return {
-                    "type": "audio_data",
-                    "audio": audio_chunk,
-                    "user_id": user_id
+                    "type": "audio",
+                    "audio": audio_chunk
                 }
-            
-            # Add current chunk to buffer
-            buffer_key = f"{room_id}_{user_id}"
-            full_audio = self._add_to_buffer(room_id, user_id, audio_chunk)
+                
+            # Add to buffer and get complete buffer
+            complete_buffer = self._add_to_buffer(room_id, user_id, audio_chunk)
             
             # Convert audio bytes to numpy array
-            audio_np = np.frombuffer(full_audio, dtype=np.float32)
+            audio_np = np.frombuffer(complete_buffer, dtype=np.float32)
             
             # Process only if we have enough audio data (at least 0.5 seconds)
             if len(audio_np) < 8000:  # Assuming 16kHz sample rate
-                self.processing_lock[lock_key] = False
                 return None
                 
             # Perform speech recognition and translation
@@ -149,9 +135,6 @@ class AudioProcessor:
         except Exception as e:
             logger.error(f"Error processing audio chunk: {e}")
             return None
-        finally:
-            # Always release lock
-            self.processing_lock[lock_key] = False
 
     def _add_to_buffer(self, room_id: str, user_id: str, audio_chunk: bytes) -> bytes:
         """Add audio chunk to user's buffer and return the complete buffer"""
@@ -176,8 +159,8 @@ class AudioProcessor:
         if buffer_key in self.audio_buffers:
             self.audio_buffers[buffer_key] = bytearray()
 
-    def toggle_mirror_mode(self, enabled: bool = False):
-        """Toggle audio mirroring mode (no translation, just echo)"""
+    def toggle_mirror_mode(self, enabled: bool = False) -> bool:
+        """Toggle audio mirroring mode"""
         self.mirror_mode = enabled
         logger.info(f"Audio mirror mode {'enabled' if enabled else 'disabled'}")
         return self.mirror_mode
