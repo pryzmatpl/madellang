@@ -116,7 +116,7 @@ const Index = () => {
   
   // Copy room link to clipboard
   const copyRoomLink = () => {
-    const url = getRoomUrl();
+    const url = getRoomUrl() || window.location.href;
     navigator.clipboard.writeText(url);
     toast({
       title: "Link Copied",
