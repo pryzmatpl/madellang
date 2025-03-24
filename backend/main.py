@@ -84,6 +84,31 @@ async def websocket_test(websocket: WebSocket):
     except WebSocketDisconnect:
         logger.info("WebSocket test client disconnected")
 
+# Add separate audio handling coroutine
+async def handle_audio_messages(websocket: WebSocket, room_id: str, user_id: str, target_lang: str):
+    while True:
+        try:
+            audio_data = await websocket.receive_bytes()
+            result = await audio_processor.process_audio_chunk(
+                room_id=room_id,
+                user_id=user_id,
+                audio_chunk=audio_data,
+                target_lang=target_lang
+            )
+            
+            if result:
+                if "audio" in result:
+                    await websocket.send_bytes(result["audio"])
+                else:
+                    await room_manager.broadcast_translation(room_id, websocket, result)
+                    
+        except WebSocketDisconnect:
+            break
+        except Exception as e:
+            logger.error(f"Audio processing error: {str(e)}")
+            continue
+
+# Update the main WebSocket endpoint to run both handlers
 @app.websocket("/ws/{room_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str):
     await websocket.accept()
@@ -104,47 +129,15 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
             "user_id": user_id
         })
         
-        # Handle messages
-        while True:
-            try:
-                message = await websocket.receive()
-                
-                if not message:  # Add null check
-                    continue
-                    
-                if "text" in message:
-                    try:
-                        cmd = json.loads(message["text"])
-                        if cmd.get("type") == "ping":
-                            await websocket.send_json({"type": "pong"})
-                    except json.JSONDecodeError:
-                        continue
-                        
-                elif "bytes" in message:
-                    audio_data = message["bytes"]
-                    result = await audio_processor.process_audio_chunk(
-                        room_id=room_id,
-                        user_id=user_id,
-                        audio_chunk=audio_data,
-                        target_lang=target_lang
-                    )
-                    
-                    if result:
-                        if "audio" in result:
-                            await websocket.send_bytes(result["audio"])
-                        else:
-                            await room_manager.broadcast_translation(room_id, websocket, result)
-                            
-            except WebSocketDisconnect:
-                logger.info(f"WebSocket disconnected for user {user_id}")
-                break
-                
-            except Exception as e:
-                logger.error(f"Error processing message: {str(e)}")
-                if "disconnect" in str(e):
-                    break
-                continue
-                
+        # Create tasks for both message types
+        message_task = asyncio.create_task(handle_text_messages(websocket))
+        audio_task = asyncio.create_task(handle_audio_messages(websocket, room_id, user_id, target_lang))
+        
+        await asyncio.gather(message_task, audio_task)
+        
+    except Exception as e:
+        logger.error(f"Connection error: {str(e)}")
+        
     finally:
         await room_manager.remove_participant(room_id, websocket)
         logger.info(f"User {user_id} left room {room_id}")
@@ -225,3 +218,28 @@ async def toggle_mirror_mode(enabled: bool = False):
     """Toggle audio mirroring mode"""
     mirror_enabled = audio_processor.toggle_mirror_mode(enabled)
     return {"mirror_mode": mirror_enabled}
+
+async def handle_text_messages(websocket: WebSocket):
+    """Handle text-based WebSocket messages"""
+    while True:
+        try:
+            message = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+            
+            try:
+                cmd = json.loads(message)
+                if cmd.get("type") == "ping":
+                    await websocket.send_json({"type": "pong"})
+            except json.JSONDecodeError:
+                continue
+                
+        except asyncio.TimeoutError:
+            # Send keep-alive ping
+            await websocket.send_json({"type": "ping"})
+            continue
+            
+        except WebSocketDisconnect:
+            break
+            
+        except Exception as e:
+            logger.error(f"Text message error: {str(e)}")
+            continue
