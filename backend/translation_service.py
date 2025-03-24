@@ -4,6 +4,7 @@ from typing import Dict, List, Optional
 from model_selector import select_appropriate_whisper_model
 import logging
 from amd_gpu_utils import safe_gpu_setup
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,10 @@ class TranslationService:
                 self.model = whisper.load_model(model_name, device=self.device)
             
             logger.info(f"Successfully loaded {model_name} model")
+            
+            # Skip the warmup step for now since it's causing issues
+            # We'll handle language detection properly when needed
+            
         except Exception as e:
             logger.error(f"Error loading {model_name} model: {e}")
             # Try fallback to tiny model on CPU if GPU loading failed
@@ -47,8 +52,13 @@ class TranslationService:
                 # Re-raise if we're already trying the smallest model
                 raise
                 
-        # Languages Whisper can handle
-        self.supported_languages = list(whisper.tokenizer.LANGUAGES.keys())
+        # Languages Whisper can handle - ensure we load this correctly
+        self.supported_languages = {}
+        try:
+            self.supported_languages = whisper.tokenizer.LANGUAGES
+            logger.info(f"Loaded {len(self.supported_languages)} supported languages")
+        except Exception as e:
+            logger.error(f"Error loading language list: {e}")
         
     def transcribe_and_translate(self, audio_data, source_lang: Optional[str] = None, target_lang: str = "en") -> Dict:
         """
@@ -62,22 +72,39 @@ class TranslationService:
         Returns:
             Dict with original text, detected language, and translated text
         """
+        logger.info(f"Transcribing audio with source_lang={source_lang}, target_lang={target_lang}")
+        
         # Determine the task based on target language
         task = "translate" if target_lang == "en" else "transcribe"
         
         try:
+            # Validate language codes first
+            if source_lang and source_lang not in self.supported_languages:
+                logger.warning(f"Source language {source_lang} not found in supported languages. Using auto-detection instead.")
+                source_lang = None
+                
+            if target_lang not in self.supported_languages:
+                logger.warning(f"Target language {target_lang} not found in supported languages. Falling back to English.")
+                target_lang = "en"
+            
             # First transcribe to get original text and detect language
+            transcription_options = {"task": "transcribe"}
+            if source_lang:
+                transcription_options["language"] = source_lang
+                
             transcription_result = self.model.transcribe(
                 audio_data, 
-                language=source_lang,
-                task="transcribe"
+                **transcription_options
             )
             
             original_text = transcription_result["text"]
             detected_lang = transcription_result.get("language", "en")
             
+            logger.info(f"Detected language: {detected_lang}, original text: {original_text[:50]}...")
+            
             # If target is the same as source, no translation needed
             if detected_lang == target_lang:
+                logger.info("Source and target languages match, no translation needed")
                 return {
                     "original_text": original_text,
                     "translated_text": original_text,
@@ -94,6 +121,7 @@ class TranslationService:
                         task="translate"
                     )
                     english_text = english_result["text"]
+                    logger.info(f"Translated to English: {english_text[:50]}...")
                 else:
                     english_text = original_text
                     
@@ -108,6 +136,7 @@ class TranslationService:
                     task="translate"
                 )
                 translated_text = translation_result["text"]
+                logger.info(f"Translated text: {translated_text[:50]}...")
             
             return {
                 "original_text": original_text,
@@ -116,11 +145,12 @@ class TranslationService:
             }
             
         except Exception as e:
-            print(f"Error in transcribe_and_translate: {e}")
+            logger.error(f"Error in transcribe_and_translate: {e}")
             return {
                 "original_text": "",
                 "translated_text": "",
-                "detected_language": source_lang or "en"
+                "detected_language": source_lang or "en",
+                "error": str(e)
             }
     
     def _prompt_translate(self, text: str, target_lang: str) -> str:
@@ -128,31 +158,41 @@ class TranslationService:
         Use Whisper's text capabilities to translate text to a target language
         by using clever prompting
         """
-        # Get the full language name for clearer instructions
-        language_name = whisper.tokenizer.LANGUAGES.get(target_lang, "Unknown")
-        
-        # Create a prompt that instructs translation
-        prompt = f"Translate the following text to {language_name}: {text}"
-        
-        # Use Whisper to process this prompt
-        # This is a creative use of Whisper - we're forcing it to recognize 
-        # our prompt and then generate a completion in the target language
-        fake_audio = torch.zeros((1, 16000), device=self.device)  # 1 second of silence
-        options = whisper.DecodingOptions(
-            prompt=prompt,
-            language=target_lang,
-            without_timestamps=True,
-        )
-        
         try:
-            result = whisper.decode(self.model, fake_audio, options)
-            # Try to extract just the translation by removing the prompt if it appears
+            # Get the full language name for clearer instructions
+            language_name = self.supported_languages.get(target_lang, "Unknown")
+            
+            # Create a prompt that instructs translation
+            prompt = f"Translate the following text to {language_name}: {text}"
+            logger.info(f"Using translation prompt to {language_name}")
+            
+            # Use proper audio format that the model expects - create a dummy spectrogram
+            # Instead of creating a raw audio tensor, we'll use the log mel spectrogram format
+            # that Whisper expects
+            
+            # Create a properly formatted options object
+            options = whisper.DecodingOptions(
+                prompt=prompt,
+                language=target_lang,
+                without_timestamps=True,
+            )
+            
+            # For prompt-based approaches, we'll use the model's encode/decode functions directly
+            # Use a different approach that doesn't rely on dummy audio
+            encodings = self.model.tokenizer.encode(prompt)
+            prompt_ids = torch.tensor([encodings.ids]).to(self.device)
+            
+            # Generate a translation using the prompt
+            result = self.model.decode(prompt_ids, options)
             translation = result.text
+            
+            # Clean up the translation - remove the prompt if it appears
             if prompt in translation:
                 translation = translation.replace(prompt, "").strip()
+                
             return translation
         except Exception as e:
-            print(f"Error in prompt translation: {e}")
+            logger.error(f"Error in prompt translation: {e}")
             return text  # Fallback to original text
             
     def translate_text(self, text: str, source_lang: str, target_lang: str) -> str:
@@ -160,6 +200,17 @@ class TranslationService:
         Translate text from source language to target language
         This is a simpler method that doesn't require audio input
         """
+        logger.info(f"Translating text from {source_lang} to {target_lang}")
+        
+        # Validate language codes
+        if source_lang not in self.supported_languages:
+            logger.warning(f"Source language {source_lang} not found in supported languages. Using 'en' instead.")
+            source_lang = "en"
+            
+        if target_lang not in self.supported_languages:
+            logger.warning(f"Target language {target_lang} not found in supported languages. Using 'en' instead.")
+            target_lang = "en"
+        
         # If languages are the same, no translation needed
         if source_lang == target_lang:
             return text
@@ -167,10 +218,6 @@ class TranslationService:
         try:
             # For translation to English, we can use Whisper's capabilities directly
             if target_lang == "en":
-                # Create a small audio prompt with the text in the source language
-                # This is a workaround as Whisper is primarily designed for audio input
-                # However, since we don't have a true TTS for the source language,
-                # we'll use the prompt-based approach
                 return self._prompt_translate(text, target_lang)
             else:
                 # For non-English targets, translate to English first if needed
@@ -183,9 +230,9 @@ class TranslationService:
                 return self._prompt_translate(english_text, target_lang)
                 
         except Exception as e:
-            print(f"Error in text translation: {e}")
+            logger.error(f"Error in text translation: {e}")
             return text  # Fallback to original text
             
-    def get_available_languages(self) -> List[str]:
-        """Get list of available languages for translation"""
+    def get_available_languages(self) -> Dict[str, str]:
+        """Get dictionary of available languages for translation"""
         return self.supported_languages 

@@ -42,7 +42,7 @@ def get_optimal_config_for_gpu():
             "AMD_SERIALIZE_KERNEL": "1",  # Boolean flag, should be 0 or 1, not 3
             "TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL": "1",
             "HIP_VISIBLE_DEVICES": "0",
-            "WHISPER_MODEL": "small",
+            "WHISPER_MODEL": "tiny",  # Use tiny model for RDNA3 to avoid compatibility issues
             "FLASH_ATTENTION_TRITON_AMD_ENABLE": "TRUE"
         },
         "gfx90a": {  # MI200 series
@@ -57,7 +57,7 @@ def get_optimal_config_for_gpu():
             "PYTORCH_HIP_ALLOC_CONF": "max_split_size_mb:256",
             "AMD_SERIALIZE_KERNEL": "1",
             "HIP_VISIBLE_DEVICES": "0",
-            "WHISPER_MODEL": "medium"
+            "WHISPER_MODEL": "small"
         }
     }
     
@@ -105,10 +105,18 @@ def is_gpu_compatible():
         return False
     
     try:
-        # Test tensor creation
-        x = torch.zeros(5, 5, device='cuda')
-        y = x + x  # Simple operation to test functionality
-        success = y.sum().item() == 0
+        # Test tensor creation and simple operations
+        # Use a safer test that's less likely to fail on AMD GPUs
+        x = torch.ones((2, 2), device='cpu')
+        # First try to move to GPU and do a simple operation
+        x_gpu = x.to('cuda')
+        y_gpu = x_gpu + x_gpu
+        # Move back to CPU to verify the operation worked
+        y_cpu = y_gpu.to('cpu')
+        
+        # Check if the data is as expected (should be tensor of 2's)
+        success = torch.all(y_cpu == 2).item()
+        
         logger.info(f"GPU compatibility test: {'Passed' if success else 'Failed'}")
         return success
     except Exception as e:

@@ -39,7 +39,7 @@ export function useRoomConnection({
     try {
       // Create a new socket connection if one doesn't exist
       if (!socketRef.current) {
-        socketRef.current = io('http://localhost:3001');
+        socketRef.current = io('http://localhost:8000');
         
         // Set up socket event handlers
         socketRef.current.on('connect', () => {

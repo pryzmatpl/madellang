@@ -1,99 +1,118 @@
-import React from 'react';
-import { Check, ChevronsUpDown } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import React, { useState, useEffect } from 'react';
 import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-} from "@/components/ui/command";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ChevronDown } from "lucide-react";
 
-const languages = [
-  { value: "en", label: "English" },
-  { value: "es", label: "Spanish" },
-  { value: "fr", label: "French" },
-  { value: "de", label: "German" },
-  { value: "it", label: "Italian" },
-  { value: "pt", label: "Portuguese" },
-  { value: "zh", label: "Chinese" },
-  { value: "ja", label: "Japanese" },
-  { value: "pl", label: "Polish" },
-];
+// Define the backend URL directly if config import fails
+const BACKEND_URL = 'http://localhost:8000';
+
+interface Language {
+  code: string;
+  name: string;
+}
 
 interface LanguageSelectorProps {
-  value?: string;
-  onChange?: (value: string) => void;
-  selectedLanguage?: string;
-  onLanguageChange?: (value: string) => void;
+  value: string;
+  onChange: (value: string) => void;
   disabled?: boolean;
 }
 
-const LanguageSelector: React.FC<LanguageSelectorProps> = ({ 
-  value, 
-  onChange, 
-  selectedLanguage, 
-  onLanguageChange,
+const LanguageSelector: React.FC<LanguageSelectorProps> = ({
+  value,
+  onChange,
   disabled = false
 }) => {
-  // Use selectedLanguage if provided, otherwise use value
-  const languageValue = selectedLanguage || value || '';
-  // Use onLanguageChange if provided, otherwise use onChange
-  const handleChange = onLanguageChange || onChange || (() => {});
-  
-  const [open, setOpen] = React.useState(false);
+  const [languages, setLanguages] = useState<Language[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const selectedLanguageObj = languages.find(lang => lang.value === languageValue);
+  useEffect(() => {
+    const fetchLanguages = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        
+        const response = await fetch(`${BACKEND_URL}/available-languages`);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to fetch languages: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        // Handle the dictionary format from the backend
+        // The backend now returns: { "en": "English", "es": "Spanish", ... }
+        const languagesList = Object.entries(data.languages).map(([code, name]) => ({
+          code,
+          name: String(name)
+        }));
+        
+        // Sort languages by name
+        languagesList.sort((a, b) => a.name.localeCompare(b.name));
+        
+        setLanguages(languagesList);
+        console.log("Loaded languages:", languagesList);
+      } catch (err) {
+        console.error("Error fetching languages:", err);
+        setError(err instanceof Error ? err.message : "Unknown error");
+        
+        // Fallback to common languages if API fails
+        setLanguages([
+          { code: "en", name: "English" },
+          { code: "es", name: "Spanish" },
+          { code: "fr", name: "French" },
+          { code: "de", name: "German" },
+          { code: "zh", name: "Chinese" },
+          { code: "ja", name: "Japanese" }
+        ]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchLanguages();
+  }, []);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          className="w-full justify-between"
-          disabled={disabled}
-        >
-          {selectedLanguageObj ? selectedLanguageObj.label : "Select language..."}
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-full p-0 z-[100]">
-        <Command className="w-full">
-          <CommandInput placeholder="Search language..." />
-          <CommandEmpty>No language found.</CommandEmpty>
-          <CommandGroup className="max-h-[200px] overflow-auto">
-            {languages.map((language) => (
-              <CommandItem
-                key={language.value}
-                value={language.value}
-                className="cursor-pointer hover:bg-accent"
-                onSelect={(currentValue) => {
-                  console.log("Language selected:", currentValue);
-                  handleChange(currentValue);
-                  setOpen(false);
-                }}
-              >
-                <Check
-                  className={cn(
-                    "mr-2 h-4 w-4",
-                    languageValue === language.value ? "opacity-100" : "opacity-0"
-                  )}
-                />
-                {language.label}
-              </CommandItem>
-            ))}
-          </CommandGroup>
-        </Command>
-      </PopoverContent>
-    </Popover>
+    <div className="language-selector-container">
+      <label htmlFor="language-select" className="block text-sm font-medium mb-1">
+        Target Language
+      </label>
+      
+      <Select
+        value={value}
+        onValueChange={onChange}
+        disabled={disabled || isLoading}
+      >
+        <SelectTrigger id="language-select" className="w-full">
+          <SelectValue placeholder="Select language" />
+        </SelectTrigger>
+        <SelectContent>
+          {error && (
+            <div className="p-2 text-sm text-red-500">
+              Error loading languages. Using limited list.
+            </div>
+          )}
+          
+          {languages.map((language) => (
+            <SelectItem key={language.code} value={language.code}>
+              {language.name}
+            </SelectItem>
+          ))}
+          
+          {languages.length === 0 && !isLoading && !error && (
+            <div className="p-2 text-sm text-muted-foreground">
+              No languages available
+            </div>
+          )}
+        </SelectContent>
+      </Select>
+    </div>
   );
 };
 
