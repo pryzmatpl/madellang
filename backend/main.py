@@ -129,11 +129,8 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
             "user_id": user_id
         })
         
-        # Create tasks for both message types
-        message_task = asyncio.create_task(handle_text_messages(websocket))
-        audio_task = asyncio.create_task(handle_audio_messages(websocket, room_id, user_id, target_lang))
-        
-        await asyncio.gather(message_task, audio_task)
+        # Handle messages in a single loop
+        await handle_combined_messages(websocket, room_id, user_id, target_lang)
         
     except Exception as e:
         logger.error(f"Connection error: {str(e)}")
@@ -219,27 +216,38 @@ async def toggle_mirror_mode(enabled: bool = False):
     mirror_enabled = audio_processor.toggle_mirror_mode(enabled)
     return {"mirror_mode": mirror_enabled}
 
-async def handle_text_messages(websocket: WebSocket):
-    """Handle text-based WebSocket messages"""
+async def handle_combined_messages(websocket: WebSocket, room_id: str, user_id: str, target_lang: str):
+    """Handle both text and binary messages in a single loop"""
     while True:
         try:
-            message = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+            # Wait for either text or binary message
+            message = await websocket.receive()
             
-            try:
-                cmd = json.loads(message)
-                if cmd.get("type") == "ping":
-                    await websocket.send_json({"type": "pong"})
-            except json.JSONDecodeError:
-                continue
+            if "text" in message:
+                try:
+                    cmd = json.loads(message["text"])
+                    if cmd.get("type") == "ping":
+                        await websocket.send_json({"type": "pong"})
+                except json.JSONDecodeError:
+                    continue
+                    
+            elif "bytes" in message:
+                audio_data = message["bytes"]
+                result = await audio_processor.process_audio_chunk(
+                    room_id=room_id,
+                    user_id=user_id,
+                    audio_chunk=audio_data,
+                    target_lang=target_lang
+                )
                 
-        except asyncio.TimeoutError:
-            # Send keep-alive ping
-            await websocket.send_json({"type": "ping"})
-            continue
-            
+                if result:
+                    if "audio" in result:
+                        await websocket.send_bytes(result["audio"])
+                    else:
+                        await room_manager.broadcast_translation(room_id, websocket, result)
+                        
         except WebSocketDisconnect:
             break
-            
         except Exception as e:
-            logger.error(f"Text message error: {str(e)}")
+            logger.error(f"Message handling error: {str(e)}")
             continue
