@@ -111,8 +111,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
         await room_manager.broadcast_participant_count(room_id)
         
         # Handle messages
-        connection_active = True
-        while connection_active:
+        while True:
             try:
                 # Use receive instead of receive_bytes to handle different message types
                 message = await websocket.receive()
@@ -130,6 +129,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                 elif "bytes" in message:
                     # Process audio data
                     audio_data = message["bytes"]
+                    logger.debug(f"Received audio chunk: {len(audio_data)} bytes")
                     
                     # Process the audio chunk
                     result = await audio_processor.process_audio_chunk(
@@ -144,14 +144,21 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                         if "audio" in result:
                             # Send binary audio data
                             await websocket.send_bytes(result["audio"])
+                            logger.debug(f"Sent audio response: {len(result['audio'])} bytes")
                         else:
                             # Send translation data
                             await room_manager.broadcast_translation(room_id, websocket, result)
             
             except WebSocketDisconnect:
-                connection_active = False
+                # Break out of the loop entirely on disconnect
+                logger.info(f"WebSocket disconnected for user {user_id}")
+                break
+                
             except Exception as e:
                 logger.error(f"Error in WebSocket message loop: {e}")
+                # Don't try to continue if we hit a critical error
+                if "Cannot call" in str(e) and "disconnect" in str(e):
+                    break
     
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
