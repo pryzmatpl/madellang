@@ -36,6 +36,7 @@ from fastapi.openapi.utils import get_openapi
 from typing import Dict, List, Optional
 from pydantic import BaseModel
 from pathlib import Path
+import logger_config
 
 # Setup logging
 logger = logging.getLogger(__name__)
