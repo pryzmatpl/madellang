@@ -1,5 +1,39 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { io, Socket } from 'socket.io-client';
+import { BACKEND_URL } from '@/config';
+
+// Define message types for WebSocket
+interface TranslatedAudioMessage {
+  type: 'translated_audio';
+  audio: ArrayBuffer;
+}
+
+interface RoomJoinedMessage {
+  type: 'connection_established';
+  room_id: string;
+  user_id: string;
+}
+
+interface ParticipantJoinedMessage {
+  type: 'user_joined';
+  user_id: string;
+}
+
+interface ParticipantLeftMessage {
+  type: 'user_left';
+  user_id: string;
+}
+
+interface ErrorMessage {
+  type: 'error';
+  message: string;
+}
+
+type WebSocketMessage = 
+  | TranslatedAudioMessage
+  | RoomJoinedMessage
+  | ParticipantJoinedMessage
+  | ParticipantLeftMessage
+  | ErrorMessage;
 
 interface RoomState {
   isConnected: boolean;
@@ -30,84 +64,103 @@ export function useRoomConnection({
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
   
   // Refs
-  const socketRef = useRef<Socket | null>(null);
+  const socketRef = useRef<WebSocket | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   
   // Connect to a room
   const connectToRoom = useCallback(async (roomId?: string) => {
     try {
-      // Create a new socket connection if one doesn't exist
+      // Create a new WebSocket connection if one doesn't exist
       if (!socketRef.current) {
-        socketRef.current = io('http://localhost:8000');
+        const newRoomId = roomId || `room-${Math.random().toString(36).substring(2, 9)}`;
+        const wsUrl = `${BACKEND_URL.replace('http://', 'ws://')}/ws/${newRoomId}?target_lang=${targetLanguage}`;
+        
+        socketRef.current = new WebSocket(wsUrl);
         
         // Set up socket event handlers
-        socketRef.current.on('connect', () => {
+        socketRef.current.onopen = () => {
           setRoomState(prev => ({
             ...prev,
             isConnected: true,
-            error: null
+            error: null,
+            currentRoom: newRoomId,
           }));
-        });
+        };
         
-        socketRef.current.on('disconnect', () => {
+        socketRef.current.onclose = () => {
           setRoomState(prev => ({
             ...prev,
             isConnected: false
           }));
-        });
+        };
         
-        socketRef.current.on('translated_audio', (data) => {
-          if (data && data.audio) {
-            const audioBlob = new Blob([data.audio], { type: 'audio/webm' });
-            onTranslatedAudio(audioBlob);
+        socketRef.current.onerror = (error) => {
+          console.error('WebSocket error:', error);
+          setRoomState(prev => ({
+            ...prev,
+            error: 'WebSocket connection error'
+          }));
+        };
+        
+        socketRef.current.onmessage = (event) => {
+          // Handle binary data (audio)
+          if (event.data instanceof Blob) {
+            onTranslatedAudio(event.data);
+            return;
           }
-        });
+          
+          // Handle JSON messages
+          try {
+            const message = JSON.parse(event.data) as WebSocketMessage;
+            
+            switch (message.type) {
+              case 'connection_established':
+                setRoomState(prev => ({
+                  ...prev,
+                  currentRoom: message.room_id,
+                }));
+                break;
+              
+              case 'user_joined':
+                setRoomState(prev => ({
+                  ...prev,
+                  participants: [...(prev.participants || []), message.user_id]
+                }));
+                break;
+              
+              case 'user_left':
+                setRoomState(prev => ({
+                  ...prev,
+                  participants: (prev.participants || []).filter(id => id !== message.user_id)
+                }));
+                break;
+              
+              case 'error':
+                setRoomState(prev => ({
+                  ...prev,
+                  error: message.message
+                }));
+                break;
+                
+              case 'translated_audio':
+                // Handle translated audio if it comes as JSON
+                // This should be binary data but adding a fallback
+                if (message.audio) {
+                  const audioBlob = new Blob([message.audio], { type: 'audio/webm' });
+                  onTranslatedAudio(audioBlob);
+                }
+                break;
+            }
+          } catch (error) {
+            console.error('Error parsing WebSocket message:', error);
+          }
+        };
         
-        socketRef.current.on('room_joined', (data) => {
-          setRoomState(prev => ({
-            ...prev,
-            currentRoom: data.roomId,
-            participants: data.participants || []
-          }));
-        });
-        
-        socketRef.current.on('participant_joined', (data) => {
-          setRoomState(prev => ({
-            ...prev,
-            participants: [...(prev.participants || []), data.participantId]
-          }));
-        });
-        
-        socketRef.current.on('participant_left', (data) => {
-          setRoomState(prev => ({
-            ...prev,
-            participants: (prev.participants || []).filter(id => id !== data.participantId)
-          }));
-        });
-        
-        socketRef.current.on('error', (error) => {
-          setRoomState(prev => ({
-            ...prev,
-            error: error.message
-          }));
-        });
+        return newRoomId;
+      } else {
+        return roomState.currentRoom;
       }
-      
-      // Join or create a room
-      const newRoomId = roomId || `room-${Math.random().toString(36).substring(2, 9)}`;
-      socketRef.current.emit('join_room', {
-        roomId: newRoomId,
-        language: targetLanguage
-      });
-      
-      setRoomState(prev => ({
-        ...prev,
-        currentRoom: newRoomId,
-        error: null
-      }));
-      
-      return newRoomId;
     } catch (error) {
       console.error('Error connecting to room:', error);
       setRoomState(prev => ({
@@ -116,12 +169,12 @@ export function useRoomConnection({
       }));
       return null;
     }
-  }, [targetLanguage, onTranslatedAudio]);
+  }, [targetLanguage, onTranslatedAudio, roomState.currentRoom]);
   
   // Disconnect from room
   const disconnectFromRoom = useCallback(() => {
     if (socketRef.current) {
-      socketRef.current.disconnect();
+      socketRef.current.close();
       socketRef.current = null;
     }
     
@@ -153,13 +206,8 @@ export function useRoomConnection({
           audioChunksRef.current.push(event.data);
           
           // Send the audio chunk to the server
-          if (socketRef.current && socketRef.current.connected) {
-            const audioBlob = new Blob([event.data], { type: 'audio/webm' });
-            socketRef.current.emit('audio_data', {
-              audio: audioBlob,
-              language: targetLanguage,
-              room: roomState.currentRoom
-            });
+          if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+            socketRef.current.send(event.data);
           }
         }
       };
@@ -172,13 +220,6 @@ export function useRoomConnection({
         error: null
       }));
       
-      // Simulate receiving translated audio after a short delay
-      setTimeout(() => {
-        // Create a mock audio blob
-        const mockAudioBlob = new Blob([], { type: 'audio/mp3' });
-        onTranslatedAudio(mockAudioBlob);
-      }, 3000);
-      
       return true;
     } catch (error) {
       console.error("Error accessing microphone:", error);
@@ -188,7 +229,7 @@ export function useRoomConnection({
       }));
       return false;
     }
-  }, [roomState.currentRoom, targetLanguage, onTranslatedAudio]);
+  }, [roomState.currentRoom]);
   
   // Stop recording from microphone
   const stopMicrophone = useCallback(() => {
@@ -220,7 +261,7 @@ export function useRoomConnection({
   useEffect(() => {
     return () => {
       if (socketRef.current) {
-        socketRef.current.disconnect();
+        socketRef.current.close();
       }
       
       if (mediaRecorderRef.current) {
