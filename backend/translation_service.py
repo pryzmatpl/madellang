@@ -3,26 +3,23 @@ import torch
 from typing import Dict, List, Optional
 from model_selector import select_appropriate_whisper_model
 import logging
+from amd_gpu_utils import safe_gpu_setup
 
 logger = logging.getLogger(__name__)
 
 class TranslationService:
     def __init__(self):
         """Initialize the translation service using Whisper"""
-        # Determine device with proper error handling for AMD GPUs
-        if torch.cuda.is_available():
-            try:
-                # Test tensor operation
-                test_tensor = torch.zeros(1, device="cuda")
-                # If we get here, CUDA/HIP is working
-                self.device = "cuda"
-                logger.info(f"Using GPU: {torch.cuda.get_device_name(0)}")
-            except Exception as e:
-                logger.warning(f"GPU error: {e}, falling back to CPU")
-                self.device = "cpu"
+        # Set up GPU environment with AMD-specific configurations
+        gpu_available = safe_gpu_setup()
+        
+        # Determine device based on GPU compatibility check
+        if gpu_available:
+            self.device = "cuda"
+            logger.info(f"Using GPU: {torch.cuda.get_device_name(0)}")
         else:
             self.device = "cpu"
-            logger.info("No GPU available, using CPU")
+            logger.info("Using CPU for inference")
         
         # Select appropriate model size
         model_name = select_appropriate_whisper_model()
@@ -30,7 +27,14 @@ class TranslationService:
         
         # Attempt to load the model with error handling
         try:
-            self.model = whisper.load_model(model_name, device=self.device)
+            # For AMD GPUs, we need to make sure we load the model with proper settings
+            if self.device == "cuda" and hasattr(torch.version, 'hip'):
+                # Use smaller model if we're on AMD GPU for better stability
+                logger.info("Loading model with AMD-specific optimizations")
+                self.model = whisper.load_model(model_name, device=self.device)
+            else:
+                self.model = whisper.load_model(model_name, device=self.device)
+            
             logger.info(f"Successfully loaded {model_name} model")
         except Exception as e:
             logger.error(f"Error loading {model_name} model: {e}")

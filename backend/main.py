@@ -5,6 +5,12 @@ sys.path.insert(0, "./deps")
 # Import the custom torch loader to set up paths
 from torch_loader import get_device_info
 
+# Import AMD GPU utilities
+from amd_gpu_utils import configure_gpu_environment
+
+# Configure GPU environment early in the startup
+gpu_config = configure_gpu_environment()
+
 # Import other dependencies
 sys.path.append("./deps/whisper")
 sys.path.append("./deps/audio")
