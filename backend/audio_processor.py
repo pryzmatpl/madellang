@@ -1,8 +1,11 @@
 import asyncio
 import io
 import numpy as np
-from typing import Optional, Dict
+from typing import Optional, Dict, Any, Tuple
 import time
+import logging
+
+logger = logging.getLogger(__name__)
 
 class AudioProcessor:
     def __init__(self, model_manager, translation_service=None):
@@ -15,6 +18,9 @@ class AudioProcessor:
         self.buffer = {}  # room_id -> user_id -> buffer
         self.last_processing = {}  # room_id -> user_id -> timestamp
         self.min_process_interval = 0.5  # Minimum seconds between processing
+        self.audio_buffers = {}  # Store audio chunks by user/room
+        self.processing_lock = {}  # Prevent concurrent processing for same user
+        self.mirror_mode = False  # Toggle for audio mirroring
     
     async def process_audio(self, audio_data: bytes, target_lang: str, source_lang: Optional[str] = None) -> bytes:
         """
@@ -79,64 +85,99 @@ class AudioProcessor:
             print(f"Error in audio processing: {e}")
             return b""
 
-    async def process_audio_chunk(self, room_id: str, user_id: str, audio_chunk: bytes, target_lang: str) -> Dict:
-        """
-        Process an incoming audio chunk, buffering as needed
-        
-        Returns a dict with translation results when enough audio has been collected,
-        otherwise returns None
-        """
-        # Initialize buffer if needed
-        if room_id not in self.buffer:
-            self.buffer[room_id] = {}
-            self.last_processing[room_id] = {}
+    async def process_audio_chunk(self, room_id: str, user_id: str, 
+                                 audio_chunk: bytes, target_lang: str) -> Optional[Dict]:
+        """Process incoming audio chunk and return translation result"""
+        try:
+            # Skip processing if another chunk from same user is being processed
+            lock_key = f"{room_id}_{user_id}"
+            if lock_key in self.processing_lock and self.processing_lock[lock_key]:
+                # Just store the chunk for future processing
+                self._add_to_buffer(room_id, user_id, audio_chunk)
+                return None
             
-        if user_id not in self.buffer[room_id]:
-            self.buffer[room_id][user_id] = []
-            self.last_processing[room_id][user_id] = 0
+            # Set processing lock
+            self.processing_lock[lock_key] = True
             
-        # Add chunk to buffer
-        self.buffer[room_id][user_id].append(audio_chunk)
-        
-        # Calculate total buffered audio size
-        total_size = sum(len(chunk) for chunk in self.buffer[room_id][user_id])
-        
-        # Check if we should process now (enough data + minimum interval passed)
-        current_time = time.time()
-        time_since_last = current_time - self.last_processing[room_id].get(user_id, 0)
-        
-        should_process = (
-            total_size >= self.chunk_size * 3 and  # At least 3 chunks (~750ms of audio)
-            time_since_last >= self.min_process_interval  # Don't process too frequently
-        )
-        
-        if should_process:
-            # Concatenate all chunks
-            all_audio = b''.join(self.buffer[room_id][user_id])
-            
-            # Clear buffer but save a small tail to prevent cutting words
-            tail_size = min(len(all_audio) // 4, self.chunk_size)  # Keep up to 1/4 of the buffer
-            tail = all_audio[-tail_size:] if tail_size > 0 else b''
-            self.buffer[room_id][user_id] = [tail] if tail else []
-            
-            # Update processing timestamp
-            self.last_processing[room_id][user_id] = current_time
-            
-            # Process the audio (uses existing process_audio method)
-            # Get source language from room manager if available
-            source_lang = None  # This would come from room manager in a real implementation
-            
-            # Actually process the audio
-            translated_audio = await self.process_audio(all_audio, target_lang, source_lang)
-            
-            # Return text result for now - we'll modify the room_manager to handle audio
-            if translated_audio and len(translated_audio) > 0:
-                # In a real implementation, you'd extract the text from somewhere
-                # For now, let's return a dummy structure that main.py expects
+            # If in mirror mode, just return the audio without processing
+            if self.mirror_mode:
+                logger.debug(f"Mirror mode: echoing audio for user {user_id}")
                 return {
-                    "translated_text": "Audio processed successfully",
-                    "audio_data": translated_audio
+                    "type": "audio_data",
+                    "audio": audio_chunk,
+                    "user_id": user_id
                 }
+            
+            # Add current chunk to buffer
+            buffer_key = f"{room_id}_{user_id}"
+            full_audio = self._add_to_buffer(room_id, user_id, audio_chunk)
+            
+            # Convert audio bytes to numpy array
+            audio_np = np.frombuffer(full_audio, dtype=np.float32)
+            
+            # Process only if we have enough audio data (at least 0.5 seconds)
+            if len(audio_np) < 8000:  # Assuming 16kHz sample rate
+                self.processing_lock[lock_key] = False
+                return None
+                
+            # Perform speech recognition and translation
+            logger.debug(f"Processing {len(audio_np)} samples for user {user_id}")
+            
+            # Transcribe and translate
+            result = self.translation_service.transcribe_and_translate(
+                audio_np, target_lang=target_lang
+            )
+            
+            # Only return results if we have text
+            if result and result.get("translated_text") and len(result["translated_text"]) > 0:
+                logger.info(f"Translation result: {result['translated_text'][:50]}...")
+                
+                # Clear buffer after successful processing
+                self._clear_buffer(room_id, user_id)
+                
+                # Return the result for WebSocket transmission
+                return {
+                    "type": "translation_result",
+                    "original_text": result.get("original_text", ""),
+                    "translated_text": result.get("translated_text", ""),
+                    "language": result.get("detected_language", "unknown"),
+                    "user_id": user_id
+                }
+                
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error processing audio chunk: {e}")
+            return None
+        finally:
+            # Always release lock
+            self.processing_lock[lock_key] = False
+
+    def _add_to_buffer(self, room_id: str, user_id: str, audio_chunk: bytes) -> bytes:
+        """Add audio chunk to user's buffer and return the complete buffer"""
+        buffer_key = f"{room_id}_{user_id}"
         
-        # Not enough data to process yet
-        return None
+        if buffer_key not in self.audio_buffers:
+            self.audio_buffers[buffer_key] = bytearray()
+            
+        # Add new chunk to buffer
+        self.audio_buffers[buffer_key].extend(audio_chunk)
+        
+        # Limit buffer size (keep last 5 seconds)
+        max_buffer_size = 16000 * 4 * 5  # 5 seconds at 16kHz, 4 bytes per float32
+        if len(self.audio_buffers[buffer_key]) > max_buffer_size:
+            self.audio_buffers[buffer_key] = self.audio_buffers[buffer_key][-max_buffer_size:]
+            
+        return bytes(self.audio_buffers[buffer_key])
+        
+    def _clear_buffer(self, room_id: str, user_id: str):
+        """Clear audio buffer for a user"""
+        buffer_key = f"{room_id}_{user_id}"
+        if buffer_key in self.audio_buffers:
+            self.audio_buffers[buffer_key] = bytearray()
+
+    def toggle_mirror_mode(self, enabled: bool = False):
+        """Toggle audio mirroring mode (no translation, just echo)"""
+        self.mirror_mode = enabled
+        logger.info(f"Audio mirror mode {'enabled' if enabled else 'disabled'}")
+        return self.mirror_mode

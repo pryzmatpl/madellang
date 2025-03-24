@@ -28,7 +28,7 @@ export HIP_VISIBLE_DEVICES=0
 echo "👉 Setting HIP_VISIBLE_DEVICES=$HIP_VISIBLE_DEVICES"
 
 # AMD kernel serialization (helps with stability)
-export AMD_SERIALIZE_KERNEL=3
+export AMD_SERIALIZE_KERNEL=1
 echo "👉 Setting AMD_SERIALIZE_KERNEL=$AMD_SERIALIZE_KERNEL"
 
 # Force smaller Whisper model for stability

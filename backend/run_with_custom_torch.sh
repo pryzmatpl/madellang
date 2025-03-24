@@ -12,7 +12,7 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/rocm/lib
 
 # Add custom PyTorch to Python path
 export PYTHONPATH=$(pwd)/deps/pytorch:$PYTHONPATH
-export AMD_SERIALIZE_KERNEL=3
+export AMD_SERIALIZE_KERNEL=1
 export PYTORCH_HIP_ALLOC_CONF="max_split_size_mb:128"
 export WHISPER_MODEL="medium"  # Force smaller model
 

@@ -94,11 +94,11 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
     # Generate user ID
     user_id = str(uuid.uuid4())
     
-    # Add to room
-    await room_manager.add_participant(room_id, websocket, target_lang)
-    logger.info(f"User {user_id} joined room {room_id}")
-    
     try:
+        # Add to room
+        await room_manager.add_participant(room_id, websocket, target_lang)
+        logger.info(f"User {user_id} joined room {room_id}")
+        
         # Notify client about successful connection
         await websocket.send_json({
             "type": "connection_established",
@@ -109,8 +109,9 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
         # Broadcast participant count
         await room_manager.broadcast_participant_count(room_id)
         
-        # Handle incoming messages
-        while True:
+        # Handle incoming messages - use a flag to track connection status
+        connection_active = True
+        while connection_active:
             try:
                 # Receive binary data (audio)
                 audio_data = await websocket.receive_bytes()
@@ -123,27 +124,32 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                     target_lang=target_lang
                 )
                 
-                # If the chunk was processed (not just buffered)
+                # Process result if needed
                 if result:
-                    # Broadcast the translation to others in the room
-                    await room_manager.broadcast_translation(
-                        room_id=room_id,
-                        sender=websocket,
-                        translation=result
-                    )
+                    # Handle successful processing
+                    pass
+                    
+            except WebSocketDisconnect:
+                # Break the loop on disconnect
+                connection_active = False
             except Exception as e:
+                # Log error but continue if connection still seems valid
                 logger.error(f"Error processing audio: {e}")
-                continue
-                
-    except WebSocketDisconnect:
-        # Remove from room
-        room_manager.remove_participant(room_id, websocket)
-        logger.info(f"User {user_id} left room {room_id}")
-        
-        # Broadcast updated participant count
-        await room_manager.broadcast_participant_count(room_id)
+    
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
+    
+    finally:
+        # Always perform cleanup regardless of how we exit
+        await room_manager.remove_participant(room_id, websocket)
+        logger.info(f"User {user_id} left room {room_id}")
+        
+        # Broadcast participant count update
+        try:
+            await room_manager.broadcast_participant_count(room_id)
+        except Exception:
+            # Ignore errors during cleanup
+            pass
 
 # REST API endpoints
 @app.get("/create-room")
@@ -215,3 +221,9 @@ async def system_info():
     info["whisper_model"] = select_appropriate_whisper_model()
     
     return info
+
+@app.get("/toggle-mirror-mode")
+async def toggle_mirror_mode(enabled: bool = False):
+    """Toggle audio mirroring mode"""
+    mirror_enabled = audio_processor.toggle_mirror_mode(enabled)
+    return {"mirror_mode": mirror_enabled}

@@ -1,54 +1,75 @@
 import uuid
 import asyncio
 from typing import Dict, List, Optional, Set
-from fastapi import WebSocket
+from fastapi import WebSocket, WebSocketDisconnect
+import logging
+import json
+
+logger = logging.getLogger(__name__)
 
 class RoomManager:
     def __init__(self, audio_processor):
-        self.rooms: Dict[str, Dict[WebSocket, str]] = {}  # room_id -> {websocket -> target_language}
+        self.rooms = {}  # Maps room_id -> list of websockets
+        self.participants = {}  # Maps room_id -> {websocket: participant_info}
         self.audio_processor = audio_processor
+        logger.info("Room manager initialized")
     
     def create_room(self) -> str:
         """Create a new room and return its ID"""
         room_id = str(uuid.uuid4())
-        self.rooms[room_id] = {}
+        self.rooms[room_id] = []
+        self.participants[room_id] = {}
+        logger.info(f"Created new room: {room_id}")
         return room_id
     
     async def add_participant(self, room_id: str, websocket: WebSocket, target_lang: str):
-        """Add a participant to a room"""
+        """Add a new participant to a room"""
         if room_id not in self.rooms:
-            self.rooms[room_id] = {}
+            self.rooms[room_id] = []
+            self.participants[room_id] = {}
+            logger.info(f"Created new room: {room_id}")
+            
+        self.rooms[room_id].append(websocket)
+        self.participants[room_id][websocket] = {
+            "target_language": target_lang
+        }
         
-        self.rooms[room_id][websocket] = target_lang
+        logger.info(f"Added participant to room {room_id}, now {len(self.rooms[room_id])} participants")
     
-    def remove_participant(self, room_id: str, websocket: WebSocket):
+    async def remove_participant(self, room_id: str, websocket: WebSocket):
         """Remove a participant from a room"""
         if room_id in self.rooms and websocket in self.rooms[room_id]:
-            del self.rooms[room_id][websocket]
+            self.rooms[room_id].remove(websocket)
+            if websocket in self.participants[room_id]:
+                del self.participants[room_id][websocket]
+                
+            logger.info(f"Removed participant from room {room_id}, remaining: {len(self.rooms[room_id])}")
             
-            # Clean up empty rooms
-            if not self.rooms[room_id]:
+            # Remove room if empty
+            if len(self.rooms[room_id]) == 0:
                 del self.rooms[room_id]
+                del self.participants[room_id]
+                logger.info(f"Removed empty room: {room_id}")
     
     def get_participant_count(self, room_id: str) -> int:
-        """Get the count of participants in a room"""
-        if room_id in self.rooms:
-            return len(self.rooms[room_id])
-        return 0
+        """Get the number of participants in a room"""
+        if room_id not in self.rooms:
+            return 0
+        return len(self.rooms[room_id])
     
     async def broadcast_participant_count(self, room_id: str):
-        """Broadcast participant count update to all participants in a room"""
+        """Broadcast the updated participant count to all in the room"""
         if room_id not in self.rooms:
             return
-        
-        count = self.get_participant_count(room_id)
-        message = {"type": "participants_update", "count": count}
-        
-        for websocket in self.rooms[room_id]:
-            try:
-                await websocket.send_json(message)
-            except Exception as e:
-                print(f"Error broadcasting participant count: {e}")
+            
+        count = len(self.rooms[room_id])
+        await self.broadcast_message(
+            room_id,
+            {
+                "type": "participant_count",
+                "count": count
+            }
+        )
     
     async def process_audio(self, room_id: str, sender: WebSocket, audio_data: bytes):
         """Process audio from a participant and broadcast to other participants"""
@@ -81,19 +102,34 @@ class RoomManager:
             except Exception as e:
                 print(f"Error sending translated audio: {e}")
 
-    async def broadcast(self, room_id: str, sender_id: str, message, is_binary=True):
-        """Broadcast a message to all participants in a room except the sender"""
+    async def broadcast_message(self, room_id: str, message: Dict, exclude_websocket=None):
+        """Broadcast a JSON message to all participants in a room"""
         if room_id not in self.rooms:
             return
-        
-        for participant_id, participant in self.rooms[room_id].items():
-            if participant_id != sender_id and participant.room_id == room_id:
+            
+        for websocket in self.rooms[room_id]:
+            if websocket != exclude_websocket:
                 try:
-                    if is_binary:
-                        await participant.send_bytes(message)
-                    else:
-                        await participant.send_json(message)
+                    await websocket.send_json(message)
                 except Exception as e:
-                    print(f"Error broadcasting to participant {participant_id}: {e}")
-                    # Remove participant if they disconnected
-                    await self.remove_participant(room_id, participant_id)
+                    logger.error(f"Error broadcasting message: {e}")
+                    
+    async def broadcast_bytes(self, room_id: str, data: bytes, exclude_websocket=None):
+        """Broadcast binary data to all participants in a room"""
+        if room_id not in self.rooms:
+            return
+            
+        for websocket in self.rooms[room_id]:
+            if websocket != exclude_websocket:
+                try:
+                    await websocket.send_bytes(data)
+                except Exception as e:
+                    logger.error(f"Error broadcasting binary data: {e}")
+                    
+    async def broadcast_translation(self, room_id: str, sender: WebSocket, translation: Dict):
+        """Broadcast translation result to all participants"""
+        await self.broadcast_message(
+            room_id, 
+            translation,
+            exclude_websocket=sender
+        )

@@ -88,11 +88,20 @@ export function useRoomConnection({
           }));
         };
         
-        socketRef.current.onclose = () => {
+        socketRef.current.onclose = (event) => {
           setRoomState(prev => ({
             ...prev,
             isConnected: false
           }));
+          
+          // Attempt to reconnect after 2 seconds if not closed cleanly
+          if (!event.wasClean) {
+            setTimeout(() => {
+              if (roomState.currentRoom) {
+                connectToRoom(roomState.currentRoom);
+              }
+            }, 2000);
+          }
         };
         
         socketRef.current.onerror = (error) => {
