@@ -12,6 +12,10 @@ import ModeToggle from "@/components/ModeToggle";
 import LanguageTutor from "@/components/LanguageTutor";
 import { QRCodeSVG } from 'qrcode.react';
 import { Input } from '@/components/ui/input';
+import { useAudioPlayback } from "@/hooks/useAudioPlayback";
+import AudioOutputControl from "@/components/AudioOutputControl";
+
+import { BACKEND_URL } from '@/config';
 
 const Index = () => {
   const { toast } = useToast();
@@ -20,6 +24,8 @@ const Index = () => {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [showQRCode, setShowQRCode] = useState(false);
   const [currentMode, setCurrentMode] = useState<'translation' | 'tutor'>('translation');
+  const { isPlaying, enqueueAudio } = useAudioPlayback();
+  const [isMuted, setIsMuted] = useState(false);
   
   // Get room ID from URL if it exists
   const searchParams = new URLSearchParams(window.location.search);
@@ -38,6 +44,9 @@ const Index = () => {
       // Handle translated audio
       setIsSpeaking(true);
       setTimeout(() => setIsSpeaking(false), 3000); // Simulate speech ending
+      if (!isMuted) {
+        enqueueAudio(audioBlob);
+      }
     }
   });
   
@@ -132,6 +141,20 @@ const Index = () => {
     console.log("Current language:", targetLanguage);
     console.log("Show QR code:", showQRCode);
   }, [roomState, isActive, targetLanguage, showQRCode]);
+
+  // Add UI for testing echo mode
+  const toggleEchoMode = async () => {
+    try {
+      const response = await fetch(`${BACKEND_URL}/toggle-mirror-mode?enabled=true`);
+      const data = await response.json();
+      toast({
+        title: data.mirror_mode ? "Echo Mode Enabled" : "Echo Mode Disabled",
+        description: "Your audio will be played back without translation",
+      });
+    } catch (error) {
+      console.error("Error toggling echo mode:", error);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -244,6 +267,30 @@ const Index = () => {
           ) : (
             <LanguageTutor />
           )}
+        </div>
+      </div>
+      <div className="mt-4 p-4 bg-card rounded-lg border animate-fade-in">
+        <div className="flex flex-col items-center gap-4">
+          <h3 className="text-sm font-medium">Audio Output Control</h3>
+          
+          <AudioOutputControl
+            isMuted={isMuted}
+            onToggleMute={() => setIsMuted(!isMuted)}
+          />
+        </div>
+      </div>
+      <div className="mt-4 p-4 bg-card rounded-lg border animate-fade-in">
+        <div className="flex flex-col items-center gap-4">
+          <h3 className="text-sm font-medium">Echo Test</h3>
+          
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={toggleEchoMode}
+            className="ml-2"
+          >
+            Echo Test
+          </Button>
         </div>
       </div>
     </div>

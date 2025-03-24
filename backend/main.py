@@ -19,6 +19,7 @@ import whisper
 import torch
 import torchaudio
 import logging
+import json
 
 # Print diagnostic information
 torch_info = get_device_info()
@@ -84,12 +85,12 @@ async def websocket_test(websocket: WebSocket):
 
 @app.websocket("/ws/{room_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str):
-    """Main WebSocket endpoint for real-time translation"""
-    # Get target language from query parameters
-    target_lang = websocket.query_params.get("target_lang", "en")
-    
-    # Accept connection
+    # Accept the connection
     await websocket.accept()
+    logger.info(f"Connection accepted for room {room_id}")
+    
+    # Get target language from query parameters
+    target_lang = websocket.query_params.get("target_lang", "en") 
     
     # Generate user ID
     user_id = str(uuid.uuid4())
@@ -109,47 +110,56 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
         # Broadcast participant count
         await room_manager.broadcast_participant_count(room_id)
         
-        # Handle incoming messages - use a flag to track connection status
+        # Handle messages
         connection_active = True
         while connection_active:
             try:
-                # Receive binary data (audio)
-                audio_data = await websocket.receive_bytes()
+                # Use receive instead of receive_bytes to handle different message types
+                message = await websocket.receive()
                 
-                # Process the audio chunk
-                result = await audio_processor.process_audio_chunk(
-                    room_id=room_id,
-                    user_id=user_id,
-                    audio_chunk=audio_data,
-                    target_lang=target_lang
-                )
-                
-                # Process result if needed
-                if result:
-                    # Handle successful processing
-                    pass
+                # Check if this is a text message (command) or binary (audio)
+                if "text" in message:
+                    # Handle text commands
+                    try:
+                        cmd = json.loads(message["text"])
+                        if cmd.get("type") == "ping":
+                            await websocket.send_json({"type": "pong"})
+                    except:
+                        logger.warning(f"Could not parse message: {message['text'][:50]}")
+                        
+                elif "bytes" in message:
+                    # Process audio data
+                    audio_data = message["bytes"]
                     
+                    # Process the audio chunk
+                    result = await audio_processor.process_audio_chunk(
+                        room_id=room_id,
+                        user_id=user_id,
+                        audio_chunk=audio_data,
+                        target_lang=target_lang
+                    )
+                    
+                    # Echo processed audio or translation results
+                    if result:
+                        if "audio" in result:
+                            # Send binary audio data
+                            await websocket.send_bytes(result["audio"])
+                        else:
+                            # Send translation data
+                            await room_manager.broadcast_translation(room_id, websocket, result)
+            
             except WebSocketDisconnect:
-                # Break the loop on disconnect
                 connection_active = False
             except Exception as e:
-                # Log error but continue if connection still seems valid
-                logger.error(f"Error processing audio: {e}")
+                logger.error(f"Error in WebSocket message loop: {e}")
     
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
     
     finally:
-        # Always perform cleanup regardless of how we exit
+        # Clean up
         await room_manager.remove_participant(room_id, websocket)
         logger.info(f"User {user_id} left room {room_id}")
-        
-        # Broadcast participant count update
-        try:
-            await room_manager.broadcast_participant_count(room_id)
-        except Exception:
-            # Ignore errors during cleanup
-            pass
 
 # REST API endpoints
 @app.get("/create-room")
