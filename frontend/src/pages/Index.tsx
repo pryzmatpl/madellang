@@ -145,7 +145,7 @@ const Index = () => {
   // Add UI for testing echo mode
   const toggleEchoMode = async () => {
     try {
-      const response = await fetch(`${BACKEND_URL}/toggle-mirror-mode?enabled=true`);
+      const response = await fetch(`${BACKEND_URL}/toggle-mirror-mode?enabled=True`);
       const data = await response.json();
       toast({
         title: data.mirror_mode ? "Echo Mode Enabled" : "Echo Mode Disabled",
