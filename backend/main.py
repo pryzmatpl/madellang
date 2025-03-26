@@ -220,34 +220,58 @@ async def handle_combined_messages(websocket: WebSocket, room_id: str, user_id: 
     """Handle both text and binary messages in a single loop"""
     while True:
         try:
-            # Wait for either text or binary message
-            message = await websocket.receive()
+            # Wait for either text or binary message with a timeout
+            message = await asyncio.wait_for(websocket.receive(), timeout=30.0)
             
             if "text" in message:
                 try:
                     cmd = json.loads(message["text"])
                     if cmd.get("type") == "ping":
                         await websocket.send_json({"type": "pong"})
+                        logger.debug(f"Sent pong response to {user_id}")
                 except json.JSONDecodeError:
+                    logger.warning(f"Received invalid JSON: {message['text'][:50]}")
                     continue
                     
             elif "bytes" in message:
                 audio_data = message["bytes"]
-                result = await audio_processor.process_audio_chunk(
-                    room_id=room_id,
-                    user_id=user_id,
-                    audio_chunk=audio_data,
-                    target_lang=target_lang
-                )
+                logger.debug(f"Received {len(audio_data)} bytes of audio from {user_id}")
                 
-                if result:
-                    if "audio" in result:
-                        await websocket.send_bytes(result["audio"])
-                    else:
-                        await room_manager.broadcast_translation(room_id, websocket, result)
+                try:
+                    result = await audio_processor.process_audio_chunk(
+                        room_id=room_id,
+                        user_id=user_id,
+                        audio_chunk=audio_data,
+                        target_lang=target_lang
+                    )
+                    
+                    if result:
+                        if "audio" in result:
+                            logger.debug(f"Sending {len(result['audio'])} bytes of audio back to {user_id}")
+                            await websocket.send_bytes(result["audio"])
+                        else:
+                            await room_manager.broadcast_translation(room_id, websocket, result)
+                except Exception as e:
+                    logger.error(f"Error processing audio: {str(e)}")
+                    # Continue the loop instead of breaking
+                    continue
                         
+        except asyncio.TimeoutError:
+            # Send a ping to keep the connection alive
+            try:
+                await websocket.send_json({"type": "ping"})
+                logger.debug(f"Sent keep-alive ping to {user_id}")
+            except Exception as e:
+                logger.error(f"Error sending ping: {str(e)}")
+                break
+                
         except WebSocketDisconnect:
+            logger.info(f"WebSocket disconnected for user {user_id}")
             break
+            
         except Exception as e:
             logger.error(f"Message handling error: {str(e)}")
+            # Only break if it's a critical error
+            if "disconnect" in str(e).lower() or "closed" in str(e).lower():
+                break
             continue

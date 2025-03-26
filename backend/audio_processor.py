@@ -91,11 +91,13 @@ class AudioProcessor:
         try:
             # If mirror mode is enabled, just return the audio
             if self.mirror_mode:
+                logger.debug(f"Mirror mode active: echoing {len(audio_chunk)} bytes")
                 return {
                     "type": "audio",
                     "audio": audio_chunk
                 }
                 
+            # Regular processing for translation mode
             # Add to buffer and get complete buffer
             complete_buffer = self._add_to_buffer(room_id, user_id, audio_chunk)
             
