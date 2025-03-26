@@ -6,7 +6,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ChevronDown } from "lucide-react";
+import { Check } from "lucide-react";
 
 // Define the backend URL directly if config import fails
 const BACKEND_URL = 'http://localhost:8000';

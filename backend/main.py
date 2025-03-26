@@ -39,6 +39,7 @@ from typing import Dict, List, Optional
 from pydantic import BaseModel
 from pathlib import Path
 import logger_config
+import time
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -171,7 +172,7 @@ connection_manager = ConnectionManager()
 
 @app.websocket("/ws/{room_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str):
-    """WebSocket endpoint with comprehensive error handling"""
+    """WebSocket endpoint with optimized connection flow"""
     # Accept connection
     await websocket.accept()
     logger.info(f"Connection accepted for room {room_id}")
@@ -180,14 +181,11 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
     target_lang = websocket.query_params.get("target_lang", "en") 
     user_id = str(uuid.uuid4())
     connection_added = False
+    disconnected = False
+    last_ping_time = time.time()
     
     try:
-        # First add to room
-        await room_manager.add_participant(room_id, websocket, target_lang)
-        connection_added = True
-        logger.info(f"User {user_id} joined room {room_id}")
-        
-        # Try sending welcome message with error handling
+        # Send welcome message FIRST, before adding to room
         try:
             await websocket.send_json({
                 "type": "connection_established",
@@ -196,67 +194,88 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
             })
             logger.debug(f"Sent connection_established message to {user_id}")
         except Exception as e:
-            logger.error(f"Failed to send connection_established message: {str(e)}")
-            # If we can't send the initial message, the connection might be broken
-            return
+            logger.warning(f"Failed to send welcome message: {str(e)}")
+            disconnected = True
         
-        # Start message loop
-        while True:
-            try:
-                # Wait for a message with a timeout
-                data = await asyncio.wait_for(websocket.receive(), timeout=30.0)
-                logger.debug(f"Received message: {data}")
-                
-                # Check if it's a disconnect message
-                if data.get("type") == "websocket.disconnect":
-                    logger.info(f"Received disconnect message from client. Code: {data.get('code')}")
-                    break
-                    
-                # Process other message types
-                if "text" in data:
-                    try:
-                        msg = json.loads(data["text"])
-                        if msg.get("type") == "ping":
-                            await websocket.send_json({"type": "pong"})
-                    except Exception as e:
-                        logger.error(f"Error processing text message: {str(e)}")
-                        
-                elif "bytes" in data and audio_processor.mirror_mode:
-                    await websocket.send_bytes(data["bytes"])
-                    
-                elif "bytes" in data:
-                    result = await audio_processor.process_audio_chunk(
-                        room_id=room_id,
-                        user_id=user_id,
-                        audio_chunk=data["bytes"],
-                        target_lang=target_lang
+        # Only proceed if not disconnected
+        if not disconnected:
+            # Now add to room after confirming connection is working
+            await room_manager.add_participant(room_id, websocket, target_lang)
+            connection_added = True
+            logger.info(f"User {user_id} joined room {room_id}")
+            
+            # Message handling loop with additional disconnect check
+            while not disconnected:
+                try:
+                    # Use wait_for with a shorter timeout
+                    receive_task = asyncio.create_task(websocket.receive())
+                    done, pending = await asyncio.wait(
+                        [receive_task], 
+                        timeout=10.0,
+                        return_when=asyncio.FIRST_COMPLETED
                     )
                     
-                    if result:
-                        if "audio" in result:
-                            await websocket.send_bytes(result["audio"])
-                        else:
-                            await room_manager.broadcast_translation(room_id, websocket, result)
+                    # Cancel pending tasks
+                    for task in pending:
+                        task.cancel()
+                        
+                    if receive_task in done:
+                        # We got a message
+                        data = receive_task.result()
+                        last_ping_time = time.time()
+                        
+                        # Process text messages (ping, etc.)
+                        if "text" in data:
+                            try:
+                                msg = json.loads(data["text"])
+                                msg_type = msg.get("type", "")
+                                
+                                if msg_type == "ping":
+                                    logger.debug(f"Received ping from {user_id}, sending pong")
+                                    await websocket.send_json({"type": "pong"})
+                                elif msg_type == "close":
+                                    logger.info(f"Client {user_id} requested closure")
+                                    disconnected = True
+                            except json.JSONDecodeError:
+                                logger.warning(f"Received invalid JSON: {data['text']}")
+                            except Exception as e:
+                                logger.error(f"Error processing text message: {str(e)}")
+                                disconnected = True
+                        
+                        # Handle audio data
+                        if "bytes" in data and not disconnected:
+                            audio_data = data["bytes"]
+                            logger.debug(f"Received {len(audio_data)} bytes of audio from {user_id}")
                             
-            except asyncio.TimeoutError:
-                # If no message is received within timeout, send a ping
-                try:
-                    await websocket.send_json({"type": "ping"})
-                except Exception as e:
-                    logger.error(f"Failed to send ping, connection likely closed: {str(e)}")
-                    break
-                    
-            except ConnectionClosedError as e:
-                logger.warning(f"Connection closed during operation: {str(e)}")
-                break
+                            # Process audio in a dedicated task to avoid blocking
+                            asyncio.create_task(
+                                process_audio_data(room_id, user_id, audio_data, websocket, target_lang)
+                            )
+                    else:
+                        # Timeout occurred, send ping
+                        if time.time() - last_ping_time > 30:
+                            logger.warning(f"No activity for 30s, closing connection for {user_id}")
+                            disconnected = True
+                        else:
+                            try:
+                                await websocket.send_json({"type": "ping"})
+                                logger.debug(f"Sent keep-alive ping to {user_id}")
+                            except Exception:
+                                disconnected = True
                 
-    except WebSocketDisconnect:
-        logger.info(f"Client disconnected: {user_id}")
-    except ConnectionClosedError as e:
-        logger.warning(f"Connection closed error: {str(e)}")
+                except asyncio.CancelledError:
+                    logger.info(f"Task for {user_id} was cancelled")
+                    disconnected = True
+                
+                except Exception as e:
+                    logger.error(f"Unexpected error in WebSocket handler: {str(e)}")
+                    disconnected = True
+                    
     except Exception as e:
-        logger.error(f"WebSocket error: {str(e)}")
+        logger.error(f"Error in WebSocket endpoint: {str(e)}")
+        
     finally:
+        # Cleanup resources
         if connection_added:
             try:
                 await room_manager.remove_participant(room_id, websocket)

@@ -95,7 +95,7 @@ export function useRoomConnection({
   }, [audioStream]);
   
   // Connect to a room
-  const connectToRoom = useCallback(async (roomId?: string) => {
+  const connectToRoom = useCallback(async (roomId?: string): Promise<string | null> => {
     try {
       // Clean up existing connection
       if (socketRef.current) {
@@ -114,133 +114,134 @@ export function useRoomConnection({
       console.log(`Connecting to WebSocket at ${wsUrl} with protocol ${wsProtocol}`);
       
       // Create a new WebSocket with explicit timeout handling
-      return new Promise<string>((resolve, reject) => {
-        const socket = new WebSocket(wsUrl);
-        
-        // Set a connection timeout
-        const connectionTimeout = setTimeout(() => {
-          console.error('WebSocket connection timeout');
-          socket.close();
-          reject(new Error('Connection timeout'));
-        }, 5000);
-        
-        socket.onopen = () => {
-          clearTimeout(connectionTimeout);
-          console.log('WebSocket connection opened successfully');
+      const setupConnection = () => {
+        return new Promise<WebSocket>((resolve, reject) => {
+          const socket = new WebSocket(wsUrl);
           
-          socketRef.current = socket;
-          setRoomState(prev => ({
-            ...prev,
-            isConnected: true,
-            error: null,
-            currentRoom: newRoomId,
-          }));
+          // Set a connection timeout
+          const connectionTimeout = setTimeout(() => {
+            console.error('WebSocket connection timeout');
+            socket.close();
+            reject(new Error('Connection timeout'));
+          }, 5000);
           
-          // Set up ping interval
-          if (pingIntervalRef.current) {
-            clearInterval(pingIntervalRef.current);
+          socket.onopen = () => {
+            clearTimeout(connectionTimeout);
+            console.log('WebSocket connection opened successfully');
+            resolve(socket);
+          };
+          
+          socket.onerror = (error) => {
+            clearTimeout(connectionTimeout);
+            console.error('WebSocket connection error:', error);
+            reject(error);
+          };
+        });
+      };
+
+      // Add event handler for the first message
+      const firstMessageHandler = (event: MessageEvent) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'connection_established') {
+            console.log('Connection officially established with server');
+            // Connection is now fully established
+            socketRef.current?.removeEventListener('message', firstMessageHandler);
           }
-          pingIntervalRef.current = window.setInterval(() => {
-            if (socketRef.current?.readyState === WebSocket.OPEN) {
-              socketRef.current.send(JSON.stringify({ type: 'ping' }));
+        } catch (error) {
+          console.error('Error processing first message:', error);
+        }
+      };
+
+      socketRef.current = await setupConnection();
+      socketRef.current.addEventListener('message', firstMessageHandler);
+      
+      socketRef.current.onclose = (event) => {
+        console.log(`WebSocket closed with code ${event.code}, reason: ${event.reason}, clean: ${event.wasClean}`);
+        setRoomState(prev => ({
+          ...prev,
+          isConnected: false
+        }));
+        
+        // Clear ping interval
+        if (pingIntervalRef.current) {
+          clearInterval(pingIntervalRef.current);
+          pingIntervalRef.current = null;
+        }
+        
+        // Attempt to reconnect after 2 seconds if not closed cleanly
+        if (!event.wasClean && roomState.currentRoom) {
+          console.log(`Scheduling reconnect to room ${roomState.currentRoom}`);
+          reconnectTimeoutRef.current = window.setTimeout(() => {
+            console.log(`Attempting to reconnect to room ${roomState.currentRoom}`);
+            // Fix the nullable type issue
+            if (roomState.currentRoom) {
+              connectToRoom(roomState.currentRoom);
             }
-          }, 30000);
-          
-          resolve(newRoomId);
-        };
+          }, 2000);
+        }
+      };
+      
+      socketRef.current.onmessage = (event) => {
+        // Handle binary data (audio)
+        if (event.data instanceof Blob) {
+          console.log(`Received binary data: ${event.data.size} bytes`);
+          onTranslatedAudio(event.data);
+          return;
+        }
         
-        socket.onerror = (error) => {
-          clearTimeout(connectionTimeout);
-          console.error('WebSocket connection error:', error);
-          reject(error);
-        };
-        
-        socket.onclose = (event) => {
-          console.log(`WebSocket closed with code ${event.code}, reason: ${event.reason}, clean: ${event.wasClean}`);
-          setRoomState(prev => ({
-            ...prev,
-            isConnected: false
-          }));
+        // Handle JSON messages
+        try {
+          const message = JSON.parse(event.data) as WebSocketMessage;
+          console.log(`Received message: ${message.type}`);
           
-          // Clear ping interval
-          if (pingIntervalRef.current) {
-            clearInterval(pingIntervalRef.current);
-            pingIntervalRef.current = null;
-          }
-          
-          // Attempt to reconnect after 2 seconds if not closed cleanly
-          if (!event.wasClean && roomState.currentRoom) {
-            console.log(`Scheduling reconnect to room ${roomState.currentRoom}`);
-            reconnectTimeoutRef.current = window.setTimeout(() => {
-              console.log(`Attempting to reconnect to room ${roomState.currentRoom}`);
-              // Fix the nullable type issue
-              if (roomState.currentRoom) {
-                connectToRoom(roomState.currentRoom);
-              }
-            }, 2000);
-          }
-        };
-        
-        socket.onmessage = (event) => {
-          // Handle binary data (audio)
-          if (event.data instanceof Blob) {
-            console.log(`Received binary data: ${event.data.size} bytes`);
-            onTranslatedAudio(event.data);
-            return;
-          }
-          
-          // Handle JSON messages
-          try {
-            const message = JSON.parse(event.data) as WebSocketMessage;
-            console.log(`Received message: ${message.type}`);
+          switch (message.type) {
+            case 'connection_established':
+              setRoomState(prev => ({
+                ...prev,
+                currentRoom: message.room_id,
+              }));
+              break;
             
-            switch (message.type) {
-              case 'connection_established':
-                setRoomState(prev => ({
-                  ...prev,
-                  currentRoom: message.room_id,
-                }));
-                break;
+            case 'pong':
+              // No action needed, this just confirms the connection is alive
+              break;
               
-              case 'pong':
-                // No action needed, this just confirms the connection is alive
-                break;
-                
-              case 'user_joined':
-                setRoomState(prev => ({
-                  ...prev,
-                  participants: [...(prev.participants || []), message.user_id]
-                }));
-                break;
-              
-              case 'user_left':
-                setRoomState(prev => ({
-                  ...prev,
-                  participants: (prev.participants || []).filter(id => id !== message.user_id)
-                }));
-                break;
-              
-              case 'error':
-                setRoomState(prev => ({
-                  ...prev,
-                  error: message.message
-                }));
-                break;
-              
-              case 'translated_audio':
-                // Handle translated audio if it comes as JSON
-                // This should be binary data but adding a fallback
-                if ('audio' in message) {
-                  const audioBlob = new Blob([message.audio], { type: 'audio/webm' });
-                  onTranslatedAudio(audioBlob);
-                }
-                break;
-            }
-          } catch (error) {
-            console.error('Error parsing WebSocket message:', error);
+            case 'user_joined':
+              setRoomState(prev => ({
+                ...prev,
+                participants: [...(prev.participants || []), message.user_id]
+              }));
+              break;
+            
+            case 'user_left':
+              setRoomState(prev => ({
+                ...prev,
+                participants: (prev.participants || []).filter(id => id !== message.user_id)
+              }));
+              break;
+            
+            case 'error':
+              setRoomState(prev => ({
+                ...prev,
+                error: message.message
+              }));
+              break;
+            
+            case 'translated_audio':
+              // Handle translated audio if it comes as JSON
+              // This should be binary data but adding a fallback
+              if ('audio' in message) {
+                const audioBlob = new Blob([message.audio], { type: 'audio/webm' });
+                onTranslatedAudio(audioBlob);
+              }
+              break;
           }
-        };
-      });
+        } catch (error) {
+          console.error('Error parsing WebSocket message:', error);
+        }
+      };
+      return newRoomId;
     } catch (error) {
       console.error('Error connecting to room:', error);
       setRoomState(prev => ({

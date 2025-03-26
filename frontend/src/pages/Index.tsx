@@ -24,7 +24,7 @@ const Index = () => {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [showQRCode, setShowQRCode] = useState(false);
   const [currentMode, setCurrentMode] = useState<'translation' | 'tutor'>('translation');
-  const { isPlaying, enqueueAudio } = useAudioPlayback();
+  const { enqueueAudio } = useAudioPlayback();
   const [isMuted, setIsMuted] = useState(false);
   
   // Get room ID from URL if it exists
@@ -54,9 +54,13 @@ const Index = () => {
   useEffect(() => {
     if (roomIdFromUrl) {
       connectToRoom(roomIdFromUrl);
+      
+      // Fix substring handling here too
+      const roomIdDisplay = `${roomIdFromUrl.substring(0, 8)}...`;
+      
       toast({
         title: "Joined Translation Room",
-        description: `You've joined room ${roomIdFromUrl.substring(0, 8)}...`,
+        description: `You've joined room ${roomIdDisplay}`,
       });
     }
   }, [roomIdFromUrl, connectToRoom, toast]);
@@ -77,35 +81,37 @@ const Index = () => {
     }
   };
   
-  const handleStartSession = async () => {
-    try {
-      if (isActive) {
-        // Stop the session if already active
-        stopMicrophone();
-        setIsActive(false);
-        return;
-      }
-
-      // Connect to a room if not already connected
-      if (!roomState.isConnected) {
-        const roomId = await connectToRoom();
-        if (roomId) {
-          toast({
-            title: "Room Created",
-            description: `Your translation room is ready. ID: ${roomId.substring(0, 8)}...`,
-          });
+  const handleStartStop = async () => {
+    if (isActive) {
+      // Stop recording
+      stopMicrophone();
+      setIsActive(false);
+    } else {
+      // Start recording
+      try {
+        // Connect to a room if not already connected
+        if (!roomState.isConnected) {
+          const newRoomId = await connectToRoom();
+          if (newRoomId) {
+            // Simply use the full room ID without substring
+            toast({
+              title: "Room Created",
+              description: `Your translation room is ready. ID: ${newRoomId}`,
+            });
+          }
         }
+        
+        // Start microphone recording
+        const started = await startMicrophone();
+        setIsActive(started);
+      } catch (error) {
+        console.error('Error starting translation:', error);
+        toast({
+          title: "Error",
+          description: "Failed to start translation. Please check microphone permissions.",
+          variant: "destructive"
+        });
       }
-      
-      await startMicrophone();
-      setIsActive(true);
-    } catch (error) {
-      console.error("Error starting session:", error);
-      toast({
-        variant: "destructive",
-        title: "Microphone Error",
-        description: "Could not access your microphone. Please check permissions.",
-      });
     }
   };
   
@@ -213,7 +219,7 @@ const Index = () => {
                 
                 <div className="flex gap-3">
                   <Button 
-                    onClick={handleStartSession} 
+                    onClick={handleStartStop} 
                     className={cn(
                       "flex-1 custom-transition",
                       isActive ? "bg-red-500 hover:bg-red-600" : "bg-primary hover:bg-primary/90"
