@@ -20,6 +20,7 @@ import torch
 import torchaudio
 import logging
 import json
+import websockets
 
 # Print diagnostic information
 torch_info = get_device_info()
@@ -76,13 +77,39 @@ class TextTranslationRequest(BaseModel):
 async def websocket_test(websocket: WebSocket):
     """Simple WebSocket test endpoint"""
     await websocket.accept()
+    logger.info("Test WebSocket connection accepted")
+    
     try:
-        await websocket.send_text(f"Connection established. Server is running.")
+        await websocket.send_text("Hello from server - connection established")
+        
+        # Use a separate receive task to handle disconnections properly
         while True:
-            data = await websocket.receive_text()
-            await websocket.send_text(f"Message received: {data}")
-    except WebSocketDisconnect:
-        logger.info("WebSocket test client disconnected")
+            try:
+                # Create a task for receiving data
+                receive_task = asyncio.create_task(websocket.receive_text())
+                
+                # Wait for message with timeout
+                try:
+                    data = await asyncio.wait_for(receive_task, timeout=5.0)
+                    await websocket.send_text(f"Echo: {data}")
+                except asyncio.TimeoutError:
+                    # Send ping on timeout
+                    await websocket.send_text("ping")
+                    continue
+                    
+            except WebSocketDisconnect:
+                logger.info("Test WebSocket disconnected")
+                break
+                
+            except Exception as e:
+                logger.error(f"Test WebSocket error: {str(e)}")
+                if "disconnect" in str(e).lower():
+                    break
+                
+    except Exception as e:
+        logger.error(f"Test WebSocket error: {str(e)}")
+        
+    logger.info("Test WebSocket connection closed")
 
 # Add separate audio handling coroutine
 async def handle_audio_messages(websocket: WebSocket, room_id: str, user_id: str, target_lang: str):
@@ -143,77 +170,71 @@ connection_manager = ConnectionManager()
 
 @app.websocket("/ws/{room_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str):
-    # Accept the connection through the manager
-    await connection_manager.connect(websocket, room_id)
+    """Ultra-minimal WebSocket implementation to diagnose issues"""
+    # Accept connection
+    await websocket.accept()
     logger.info(f"Connection accepted for room {room_id}")
     
-    # Get target language from query parameters
+    # Get language and create user ID
     target_lang = websocket.query_params.get("target_lang", "en") 
     user_id = str(uuid.uuid4())
     
     try:
-        # Add to room
+        # First add to room
         await room_manager.add_participant(room_id, websocket, target_lang)
         logger.info(f"User {user_id} joined room {room_id}")
         
-        # Send initial connection success message immediately
-        await connection_manager.send_json(websocket, {
+        # Immediately send welcome message
+        await websocket.send_json({
             "type": "connection_established",
             "room_id": room_id,
             "user_id": user_id
         })
         
-        # Simple message loop
-        while True:
-            try:
-                data = await websocket.receive()
-                
-                if "text" in data:
-                    try:
-                        message = json.loads(data["text"])
-                        if message.get("type") == "ping":
-                            await connection_manager.send_json(websocket, {"type": "pong"})
-                    except:
-                        pass
-                        
-                elif "bytes" in data:
-                    audio_data = data["bytes"]
+        # Start simple message loop
+        async with websockets.connect(f"ws://localhost:8000/ws/{room_id}", ping_timeout=None) as websocket:
+            # Wait for a message (with no timeout)
+            data = await websocket.receive()
+            logger.debug(f"Received message type: {list(data.keys())}")
+            
+            # Process based on message type
+            if "text" in data:
+                try:
+                    msg = json.loads(data["text"])
+                    if msg.get("type") == "ping":
+                        await websocket.send_json({"type": "pong"})
+                except:
+                    pass
                     
-                    # Process audio in mirror mode
-                    if audio_processor.mirror_mode:
-                        # Direct echo in mirror mode
-                        await connection_manager.send_bytes(websocket, audio_data)
-                        logger.debug(f"Echoed {len(audio_data)} bytes in mirror mode")
+            elif "bytes" in data and audio_processor.mirror_mode:
+                # Handle mirror mode directly here
+                await websocket.send_bytes(data["bytes"])
+                
+            elif "bytes" in data:
+                # Process audio
+                result = await audio_processor.process_audio_chunk(
+                    room_id=room_id,
+                    user_id=user_id,
+                    audio_chunk=data["bytes"],
+                    target_lang=target_lang
+                )
+                
+                if result:
+                    if "audio" in result:
+                        await websocket.send_bytes(result["audio"])
                     else:
-                        # Normal processing
-                        result = await audio_processor.process_audio_chunk(
-                            room_id=room_id,
-                            user_id=user_id,
-                            audio_chunk=audio_data,
-                            target_lang=target_lang
-                        )
-                        
-                        if result:
-                            if "audio" in result:
-                                await connection_manager.send_bytes(websocket, result["audio"])
-                            else:
-                                await room_manager.broadcast_translation(room_id, websocket, result)
+                        await room_manager.broadcast_translation(room_id, websocket, result)
                 
-            except WebSocketDisconnect:
-                logger.info(f"Client disconnected: {user_id}")
-                break
-                
-            except Exception as e:
-                logger.error(f"Error in WebSocket loop: {str(e)}")
-                if "disconnect" in str(e).lower():
-                    break
-                # Continue on other errors
-                
+    except WebSocketDisconnect:
+        logger.info(f"Client disconnected: {user_id}")
+    except Exception as e:
+        logger.error(f"WebSocket error: {str(e)}")
     finally:
-        # Always clean up
-        connection_manager.disconnect(websocket, room_id)
-        await room_manager.remove_participant(room_id, websocket)
-        logger.info(f"User {user_id} left room {room_id}")
+        try:
+            await room_manager.remove_participant(room_id, websocket)
+            logger.info(f"User {user_id} removed from room {room_id}")
+        except Exception as e:
+            logger.error(f"Error removing from room: {str(e)}")
 
 # REST API endpoints
 @app.get("/create-room")
