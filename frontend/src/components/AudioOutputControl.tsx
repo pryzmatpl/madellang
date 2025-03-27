@@ -76,14 +76,13 @@ const AudioOutputControl: React.FC<AudioOutputProps> = ({
     
     setConnectionStatus('connecting');
     
-    // Determine protocol based on current protocol
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/${roomId}?target_lang=${targetLanguage}`;
+    // Use explicit backend URL instead of relative path
+    const wsUrl = `ws://localhost:8000/ws/${roomId}?target_lang=${targetLanguage}`;
     
     console.log(`[AudioOutputControl] Connecting to WebSocket: ${wsUrl}`);
     
     try {
-      // Create new WebSocket with additional error handling
+      // Create new WebSocket with fixed URL
       websocket.current = new WebSocket(wsUrl);
       console.log('[AudioOutputControl] WebSocket instance created');
       
