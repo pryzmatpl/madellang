@@ -21,6 +21,7 @@ class AudioProcessor:
         self.audio_buffers = {}  # Store audio chunks by user/room
         self.processing_lock = {}  # Prevent concurrent processing for same user
         self.mirror_mode = False  # Toggle for audio mirroring
+        logger.info("Audio processor initialized")
     
     async def process_audio(self, audio_data: bytes, target_lang: str, source_lang: Optional[str] = None) -> bytes:
         """
@@ -86,16 +87,19 @@ class AudioProcessor:
             return b""
 
     async def process_audio_chunk(self, room_id: str, user_id: str, 
-                                 audio_chunk: bytes, target_lang: str) -> Optional[Dict]:
+                                 audio_chunk: bytes, target_lang: str, websocket) -> Optional[Dict]:
         """Process incoming audio chunk and return translation result"""
         try:
-            # If mirror mode is enabled, just return the audio
+            # If mirror mode is enabled, simply echo the audio back
             if self.mirror_mode:
-                logger.debug(f"Mirror mode active: echoing {len(audio_chunk)} bytes")
-                return {
-                    "type": "audio",
-                    "audio": audio_chunk
-                }
+                logger.info(f"Mirroring audio back to sender: {len(audio_chunk)} bytes")
+                # Send the audio directly back to the same websocket that sent it
+                try:
+                    await websocket.send_bytes(audio_chunk)
+                    return True
+                except Exception as e:
+                    logger.error(f"Error sending mirrored audio: {str(e)}")
+                    return False
                 
             # Regular processing for translation mode
             # Add to buffer and get complete buffer
@@ -161,8 +165,12 @@ class AudioProcessor:
         if buffer_key in self.audio_buffers:
             self.audio_buffers[buffer_key] = bytearray()
 
-    def toggle_mirror_mode(self, enabled: bool = False) -> bool:
-        """Toggle audio mirroring mode"""
-        self.mirror_mode = enabled
-        logger.info(f"Audio mirror mode {'enabled' if enabled else 'disabled'}")
+    def toggle_mirror_mode(self, enabled=None):
+        """Toggle or set mirror mode"""
+        if enabled is not None:
+            self.mirror_mode = enabled
+        else:
+            self.mirror_mode = not self.mirror_mode
+        
+        logger.info(f"Audio mirror mode {'enabled' if self.mirror_mode else 'disabled'}")
         return self.mirror_mode
