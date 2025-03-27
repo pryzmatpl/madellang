@@ -151,7 +151,7 @@ const Index = () => {
   const toggleEchoMode = async () => {
     console.log('[Index] Toggling echo mode');
     try {
-      const response = await fetch(`/toggle-mirror-mode?enabled=True`);
+      const response = await fetch(`http://localhost:8000/toggle-mirror-mode?enabled=True`);
       if (response.ok) {
         const result = await response.json();
         console.log('[Index] Echo mode toggled:', result);
