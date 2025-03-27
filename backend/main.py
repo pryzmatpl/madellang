@@ -400,28 +400,25 @@ async def test_websocket():
 async def process_audio_data(room_id: str, user_id: str, audio_data: bytes, websocket: WebSocket, target_lang: str):
     """Process audio data and broadcast results to room participants"""
     try:
-        # Pass the websocket to the audio processor
+        if audio_processor.mirror_mode:
+            logger.info(f"Mirror mode active: echoing {len(audio_data)} bytes back to sender")
+            # In mirror mode, directly send the audio back to the same client
+            await websocket.send_bytes(audio_data)
+            return
+
+        # Normal translation mode logic
         result = await audio_processor.process_audio_chunk(
-            room_id, user_id, audio_data, target_lang, websocket
+            room_id=room_id,
+            user_id=user_id,
+            audio_chunk=audio_data,
+            target_lang=target_lang
         )
         
-        # In mirror mode, we directly send back to the original websocket, 
-        # so we don't need further processing
-        if audio_processor.mirror_mode:
-            return
-            
-        # Continue with normal processing for translation results
-        if result and isinstance(result, dict):
-            # Get all participants in the room
-            participants = room_manager.get_participants(room_id)
-            if not participants:
-                logger.warning(f"No participants found in room {room_id}")
-                return
+        if result:
+            if isinstance(result, dict) and "audio" in result:
+                await websocket.send_bytes(result["audio"])
+            elif isinstance(result, dict):
+                await room_manager.broadcast_translation(room_id, websocket, result)
                 
-            # Broadcast the text results to all participants
-            for participant_ws in participants:
-                if participant_ws.client_state == WebSocketState.CONNECTED:
-                    await participant_ws.send_json(result)
-                    
     except Exception as e:
         logger.error(f"Error processing audio: {str(e)}")

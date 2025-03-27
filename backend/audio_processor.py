@@ -11,6 +11,7 @@ class AudioProcessor:
     def __init__(self, model_manager, translation_service=None):
         self.model_manager = model_manager
         self.translation_service = translation_service
+        self.mirror_mode = False  # Initialize mirror mode property
         # Audio settings
         self.sample_rate = 16000
         self.chunk_size = 4096
@@ -20,7 +21,6 @@ class AudioProcessor:
         self.min_process_interval = 0.5  # Minimum seconds between processing
         self.audio_buffers = {}  # Store audio chunks by user/room
         self.processing_lock = {}  # Prevent concurrent processing for same user
-        self.mirror_mode = False  # Toggle for audio mirroring
         logger.info("Audio processor initialized")
     
     async def process_audio(self, audio_data: bytes, target_lang: str, source_lang: Optional[str] = None) -> bytes:

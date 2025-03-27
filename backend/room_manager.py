@@ -133,3 +133,21 @@ class RoomManager:
             translation,
             exclude_websocket=sender
         )
+
+    def get_participants(self, room_id: str) -> List[WebSocket]:
+        """Get all participants in a room"""
+        if room_id in self.rooms:
+            return self.rooms[room_id]
+        return []
+
+    async def broadcast_audio(self, room_id: str, source_websocket: WebSocket, audio_data: bytes):
+        """Broadcast audio to all participants in a room except the sender"""
+        if room_id not in self.rooms:
+            return
+        
+        for websocket in self.rooms[room_id]:
+            if websocket != source_websocket:  # Don't send back to sender
+                try:
+                    await websocket.send_bytes(audio_data)
+                except Exception as e:
+                    logger.error(f"Error broadcasting audio: {e}")

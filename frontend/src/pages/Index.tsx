@@ -64,6 +64,27 @@ const Index = () => {
     }
   }, [roomIdFromUrl, connectToRoom, toast]);
   
+  // Fix the room connection when using a shared link
+  useEffect(() => {
+    // Check if we have a room ID in the URL
+    const params = new URLSearchParams(window.location.search);
+    const roomIdParam = params.get('room');
+    
+    if (roomIdParam) {
+      console.log('[Index] Connecting to room from URL:', roomIdParam);
+      
+      // Use setTimeout to ensure the component is fully mounted
+      setTimeout(() => {
+        connectToRoom(roomIdParam);
+        
+        toast({
+          title: "Joined Translation Room",
+          description: `You've joined room ${roomIdParam.substring(0, 8)}...`,
+        });
+      }, 500);
+    }
+  }, [connectToRoom, toast]);
+  
   // Handle language change - using value directly
   const handleLanguageChange = (newLanguage: string) => {
     console.log("Language changed to:", newLanguage);

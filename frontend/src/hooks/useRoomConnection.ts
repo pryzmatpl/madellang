@@ -284,27 +284,29 @@ export function useRoomConnection({
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       setAudioStream(stream);
       
-      const mediaRecorder = new MediaRecorder(stream);
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: 'audio/webm' // Use a common format that works in most browsers
+      });
+      
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
       
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-          
-          // Send the audio chunk to the server
+          // Send the audio chunk to the server immediately
           if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+            console.log(`[useRoomConnection] Sending ${event.data.size} bytes of audio`);
             socketRef.current.send(event.data);
           }
         }
       };
       
-      mediaRecorder.start(1000); // Send data every 1000ms
+      // Use smaller time slices for more responsive audio
+      mediaRecorder.start(100); // 100ms chunks for more real-time feeling
       
       setRoomState(prev => ({
         ...prev,
         status: 'recording',
-        error: null
       }));
       
       return true;
@@ -316,8 +318,6 @@ export function useRoomConnection({
       }));
       return false;
     }
-    // roomState.currentRoom is removed as it's not needed
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   
   // Get a shareable URL for the current room
@@ -325,7 +325,8 @@ export function useRoomConnection({
     console.log('[useRoomConnection] Getting room URL for:', roomState.currentRoom);
     if (!roomState.currentRoom) return null;
     
-    const url = new URL('http://localhost:8000');
+    // Create a full URL with the proper base and query parameter
+    const url = new URL(window.location.origin);
     url.search = `?room=${roomState.currentRoom}`;
     return url.toString();
   }, [roomState.currentRoom]);
