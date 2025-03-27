@@ -15,8 +15,6 @@ import { Input } from '@/components/ui/input';
 import { useAudioPlayback } from "@/hooks/useAudioPlayback";
 import AudioOutputControl from "@/components/AudioOutputControl";
 
-import { BACKEND_URL } from '@/config';
-
 const Index = () => {
   const { toast } = useToast();
   const [targetLanguage, setTargetLanguage] = useState("es");
@@ -53,10 +51,11 @@ const Index = () => {
   // Connect to room from URL or create a new one
   useEffect(() => {
     if (roomIdFromUrl) {
+      console.log('[Index] Connecting to room from URL:', roomIdFromUrl);
       connectToRoom(roomIdFromUrl);
       
       // Fix substring handling here too
-      const roomIdDisplay = `${roomIdFromUrl.substring(0, 8)}...`;
+      const roomIdDisplay = roomIdFromUrl.substring(0, 8) + '...';
       
       toast({
         title: "Joined Translation Room",
@@ -90,7 +89,7 @@ const Index = () => {
       // Start recording
       try {
         // Connect to a room if not already connected
-        if (!roomState.isConnected) {
+        if (roomState.status !== 'connected') {
           const newRoomId = await connectToRoom();
           if (newRoomId) {
             // Simply use the full room ID without substring
@@ -150,15 +149,21 @@ const Index = () => {
 
   // Add UI for testing echo mode
   const toggleEchoMode = async () => {
+    console.log('[Index] Toggling echo mode');
     try {
-      const response = await fetch(`${BACKEND_URL}/toggle-mirror-mode?enabled=True`);
-      const data = await response.json();
-      toast({
-        title: data.mirror_mode ? "Echo Mode Enabled" : "Echo Mode Disabled",
-        description: "Your audio will be played back without translation",
-      });
+      const response = await fetch(`/toggle-mirror-mode?enabled=True`);
+      if (response.ok) {
+        const result = await response.json();
+        console.log('[Index] Echo mode toggled:', result);
+        toast({
+          title: "Echo Mode Enabled",
+          description: "Your speech will be echoed back to you without translation.",
+        });
+      } else {
+        console.error('[Index] Failed to toggle echo mode:', await response.text());
+      }
     } catch (error) {
-      console.error("Error toggling echo mode:", error);
+      console.error('[Index] Error toggling echo mode:', error);
     }
   };
 

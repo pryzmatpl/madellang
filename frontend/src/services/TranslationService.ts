@@ -36,7 +36,7 @@ export class TranslationService extends EventEmitter {
     super();
     this.baseUrl = baseUrl || (window.location.protocol === 'https:' 
       ? `wss://${window.location.host}` 
-      : `ws://${window.location.host}`);
+      : `ws://localhost:8000`);
       
     // If running in development with separate backend
     if (process.env.NODE_ENV === 'development') {

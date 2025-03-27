@@ -38,17 +38,22 @@ const AudioOutputControl: React.FC<AudioOutputProps> = ({
   
   // Clean up all intervals and connections
   const cleanup = useCallback(() => {
+    console.log('[AudioOutputControl] Running cleanup function');
+    
     if (websocket.current) {
+      console.log('[AudioOutputControl] Closing WebSocket in cleanup');
       websocket.current.close();
       websocket.current = null;
     }
     
     if (reconnectTimeout.current) {
+      console.log('[AudioOutputControl] Clearing reconnect timeout');
       clearTimeout(reconnectTimeout.current);
       reconnectTimeout.current = null;
     }
     
     if (pingInterval.current) {
+      console.log('[AudioOutputControl] Clearing ping interval');
       clearInterval(pingInterval.current);
       pingInterval.current = null;
     }
@@ -56,10 +61,16 @@ const AudioOutputControl: React.FC<AudioOutputProps> = ({
 
   // Move setupWebSocket to useCallback BEFORE the useEffect that depends on it
   const setupWebSocket = useCallback(() => {
-    if (!roomId) return;
+    if (!roomId) {
+      console.log('[AudioOutputControl] No roomId provided, skipping WebSocket setup');
+      return;
+    }
+    
+    console.log(`[AudioOutputControl] Setting up WebSocket for room ${roomId} with language ${targetLanguage}`);
     
     // Close any existing connection
     if (websocket.current) {
+      console.log('[AudioOutputControl] Closing existing WebSocket connection');
       websocket.current.close();
     }
     
@@ -69,31 +80,38 @@ const AudioOutputControl: React.FC<AudioOutputProps> = ({
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws/${roomId}?target_lang=${targetLanguage}`;
     
-    console.log(`Connecting to WebSocket: ${wsUrl}`);
+    console.log(`[AudioOutputControl] Connecting to WebSocket: ${wsUrl}`);
     
     try {
       // Create new WebSocket with additional error handling
       websocket.current = new WebSocket(wsUrl);
+      console.log('[AudioOutputControl] WebSocket instance created');
       
       // Set timeout for initial connection
       const connectionTimeout = setTimeout(() => {
-        console.error('WebSocket connection timeout');
+        console.warn('[AudioOutputControl] WebSocket connection timeout after 5 seconds');
         if (websocket.current && websocket.current.readyState !== WebSocket.OPEN) {
+          console.warn('[AudioOutputControl] Closing timed-out connection');
           websocket.current.close();
           setConnectionStatus('disconnected');
           
           // Attempt reconnection
           reconnectTimeout.current = setTimeout(() => {
-            console.log('Attempting to reconnect after timeout...');
+            console.log('[AudioOutputControl] Attempting to reconnect after timeout...');
             setupWebSocket();
           }, 2000);
         }
       }, 5000);
       
       websocket.current.onopen = () => {
+        console.log('[AudioOutputControl] WebSocket connection established with readyState:', websocket.current?.readyState);
         clearTimeout(connectionTimeout);
-        console.log('WebSocket connection established');
         setConnectionStatus('connected');
+        
+        // Send an immediate ping to test the connection
+        console.log('[AudioOutputControl] Sending initial ping');
+        websocket.current?.send(JSON.stringify({ type: 'ping' }));
+        
         startPingInterval();
       };
       
@@ -102,63 +120,74 @@ const AudioOutputControl: React.FC<AudioOutputProps> = ({
           // For text messages
           if (typeof event.data === 'string') {
             const data = JSON.parse(event.data);
-            console.log(`Received message type: ${data.type}`, data);
+            console.log(`[AudioOutputControl] Received message type: ${data.type}`, data);
             
             if (data.type === 'connection_established') {
-              console.log('Connection officially established with server, user ID:', data.user_id);
-              // We can store the user ID if needed
+              console.log('[AudioOutputControl] Connection officially established with server, user ID:', data.user_id);
               setConnectionStatus('connected');
             } else if (data.type === 'pong') {
-              // Just log the pong at debug level
-              console.debug('Received pong from server');
+              console.debug('[AudioOutputControl] Received pong from server');
             } else {
-              console.log('Received other message type:', data.type);
+              console.log('[AudioOutputControl] Received other message type:', data.type);
             }
           } 
           // For binary data (audio)
           else if (event.data instanceof Blob) {
-            console.log('Received binary data of size:', event.data.size);
-            // Process audio data here
+            console.log('[AudioOutputControl] Received binary data of size:', event.data.size);
           }
         } catch (error) {
-          console.error('Error processing message:', error);
+          console.error('[AudioOutputControl] Error processing message:', error);
         }
       };
       
-      websocket.current.onclose = (event: CloseEvent) => {
-        console.log(`WebSocket closed with code: ${event.code}, reason: ${event.reason || 'No reason provided'}`);
+      websocket.current.onclose = (event) => {
+        console.warn(`[AudioOutputControl] WebSocket closed with code: ${event.code}, reason: ${event.reason}, wasClean: ${event.wasClean}`);
+        clearTimeout(connectionTimeout);
         setConnectionStatus('disconnected');
         
-        if (pingInterval.current) {
-          clearInterval(pingInterval.current);
-          pingInterval.current = null;
-        }
-        
-        // Don't reconnect on normal closure
-        if (event.code !== 1000) {
-          console.log('Scheduling reconnection...');
-          reconnectTimeout.current = setTimeout(() => setupWebSocket(), 3000);
+        if (!event.wasClean) {
+          console.warn('[AudioOutputControl] Connection closed abnormally, attempting to reconnect...');
+          reconnectTimeout.current = setTimeout(() => {
+            console.log('[AudioOutputControl] Reconnecting after abnormal closure...');
+            setupWebSocket();
+          }, 3000);
         }
       };
       
       websocket.current.onerror = (error) => {
-        console.error('WebSocket error:', error);
+        console.error('[AudioOutputControl] WebSocket error:', error);
+        setConnectionStatus('disconnected');
+      };
+      
+      return () => {
+        console.log('[AudioOutputControl] Cleaning up WebSocket in setup function');
+        clearTimeout(connectionTimeout);
+        if (websocket.current) {
+          websocket.current.close();
+        }
       };
     } catch (error) {
-      console.error('Error creating WebSocket:', error);
+      console.error('[AudioOutputControl] Error creating WebSocket:', error);
       setConnectionStatus('disconnected');
     }
   }, [roomId, targetLanguage, startPingInterval]);
 
   // Only set up WebSocket if roomId is provided
   useEffect(() => {
+    console.log(`[AudioOutputControl] useEffect triggered with roomId: ${roomId}, targetLanguage: ${targetLanguage}`);
+    
     if (roomId) {
+      console.log('[AudioOutputControl] roomId available, setting up WebSocket');
       setupWebSocket();
     } else {
+      console.log('[AudioOutputControl] No roomId, running cleanup');
       cleanup();
     }
     
-    return cleanup;
+    return () => {
+      console.log('[AudioOutputControl] Component unmounting, running cleanup');
+      cleanup();
+    };
   }, [roomId, targetLanguage, cleanup, setupWebSocket]);
 
   return (

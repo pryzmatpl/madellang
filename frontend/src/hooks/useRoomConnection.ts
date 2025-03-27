@@ -1,5 +1,4 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { BACKEND_URL } from '@/config';
 
 // Define message types for WebSocket
 interface TranslatedAudioMessage {
@@ -42,11 +41,10 @@ type WebSocketMessage =
   | PongMessage;
 
 interface RoomState {
-  isConnected: boolean;
-  isRecording: boolean;
+  status: string;
+  participants: string[];
   currentRoom: string | null;
   error: string | null;
-  participants: string[];
 }
 
 interface RoomConnectionOptions {
@@ -60,11 +58,10 @@ export function useRoomConnection({
 }: RoomConnectionOptions) {
   // State
   const [roomState, setRoomState] = useState<RoomState>({
-    isConnected: false,
-    isRecording: false,
+    status: 'disconnected',
+    participants: [],
     currentRoom: null,
     error: null,
-    participants: [] // Initialize with an empty array
   });
   
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
@@ -73,8 +70,13 @@ export function useRoomConnection({
   const socketRef = useRef<WebSocket | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const pingIntervalRef = useRef<number | null>(null);
-  const reconnectTimeoutRef = useRef<number | null>(null);
+  const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Connection State logging for debugging
+  useEffect(() => {
+    console.log('[useRoomConnection] Room state changed:', roomState);
+  }, [roomState]);
   
   // Stop recording from microphone
   const stopMicrophone = useCallback(() => {
@@ -90,78 +92,69 @@ export function useRoomConnection({
     
     setRoomState(prev => ({
       ...prev,
-      isRecording: false
+      status: 'disconnected'
     }));
   }, [audioStream]);
   
   // Connect to a room
   const connectToRoom = useCallback(async (roomId?: string): Promise<string | null> => {
+    console.log('[useRoomConnection] Connecting to room, provided ID:', roomId);
+    
     try {
-      // Clean up existing connection
+      // Clean up any existing connections
       if (socketRef.current) {
+        console.log('[useRoomConnection] Closing existing WebSocket');
         socketRef.current.close();
         socketRef.current = null;
       }
-
-      // Create a new WebSocket connection
-      const newRoomId = roomId || `room-${Math.random().toString(36).substring(2, 9)}`;
       
-      // Try using explicit protocol and full URL format
-      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsHost = BACKEND_URL.replace('http://', '').replace('https://', '');
-      const wsUrl = `${wsProtocol}//${wsHost}/ws/${newRoomId}?target_lang=${targetLanguage}`;
+      setRoomState(prev => ({ ...prev, status: 'connecting' }));
       
-      console.log(`Connecting to WebSocket at ${wsUrl} with protocol ${wsProtocol}`);
-      
-      // Create a new WebSocket with explicit timeout handling
-      const setupConnection = () => {
-        return new Promise<WebSocket>((resolve, reject) => {
-          const socket = new WebSocket(wsUrl);
-          
-          // Set a connection timeout
-          const connectionTimeout = setTimeout(() => {
-            console.error('WebSocket connection timeout');
-            socket.close();
-            reject(new Error('Connection timeout'));
-          }, 5000);
-          
-          socket.onopen = () => {
-            clearTimeout(connectionTimeout);
-            console.log('WebSocket connection opened successfully');
-            resolve(socket);
-          };
-          
-          socket.onerror = (error) => {
-            clearTimeout(connectionTimeout);
-            console.error('WebSocket connection error:', error);
-            reject(error);
-          };
-        });
-      };
-
-      // Add event handler for the first message
-      const firstMessageHandler = (event: MessageEvent) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === 'connection_established') {
-            console.log('Connection officially established with server');
-            // Connection is now fully established
-            socketRef.current?.removeEventListener('message', firstMessageHandler);
-          }
-        } catch (error) {
-          console.error('Error processing first message:', error);
+      // If roomId is provided, join that room; otherwise create a new room
+      let currentRoomId = roomId;
+      if (!currentRoomId) {
+        console.log('[useRoomConnection] No room ID provided, creating new room');
+        const response = await fetch('http://localhost:8000/create-room');
+        if (!response.ok) {
+          throw new Error('Failed to create room');
         }
-      };
-
-      socketRef.current = await setupConnection();
-      socketRef.current.addEventListener('message', firstMessageHandler);
+        const data = await response.json();
+        currentRoomId = data.room_id;
+        console.log('[useRoomConnection] Created new room:', currentRoomId);
+      }
       
-      socketRef.current.onclose = (event) => {
-        console.log(`WebSocket closed with code ${event.code}, reason: ${event.reason}, clean: ${event.wasClean}`);
-        setRoomState(prev => ({
-          ...prev,
-          isConnected: false
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//localhost:8000/ws/${currentRoomId}?target_lang=${targetLanguage}`;
+      console.log('[useRoomConnection] Connecting to WebSocket:', wsUrl);
+      
+      // Create new WebSocket
+      const socket = new WebSocket(wsUrl);
+      socketRef.current = socket;
+      
+      socket.onopen = () => {
+        console.log('[useRoomConnection] WebSocket connection opened');
+        setRoomState(prev => ({ 
+          ...prev, 
+          status: 'connected', 
+          currentRoom: currentRoomId || null
         }));
+        
+        // Start ping interval to keep connection alive
+        if (pingIntervalRef.current) {
+          clearInterval(pingIntervalRef.current);
+        }
+        
+        pingIntervalRef.current = setInterval(() => {
+          if (socket.readyState === WebSocket.OPEN) {
+            console.log('[useRoomConnection] Sending ping');
+            socket.send(JSON.stringify({ type: 'ping' }));
+          }
+        }, 15000);
+      };
+      
+      socket.onclose = (event) => {
+        console.warn(`[useRoomConnection] WebSocket closed with code: ${event.code}, reason: ${event.reason}, wasClean: ${event.wasClean}`);
+        setRoomState(prev => ({ ...prev, status: 'disconnected' }));
         
         // Clear ping interval
         if (pingIntervalRef.current) {
@@ -169,20 +162,31 @@ export function useRoomConnection({
           pingIntervalRef.current = null;
         }
         
-        // Attempt to reconnect after 2 seconds if not closed cleanly
-        if (!event.wasClean && roomState.currentRoom) {
-          console.log(`Scheduling reconnect to room ${roomState.currentRoom}`);
-          reconnectTimeoutRef.current = window.setTimeout(() => {
-            console.log(`Attempting to reconnect to room ${roomState.currentRoom}`);
-            // Fix the nullable type issue
-            if (roomState.currentRoom) {
-              connectToRoom(roomState.currentRoom);
-            }
-          }, 2000);
+        // Attempt to reconnect if closure wasn't clean
+        if (!event.wasClean) {
+          console.log('[useRoomConnection] Connection closed abnormally, will attempt to reconnect');
+          if (reconnectTimeoutRef.current) {
+            clearTimeout(reconnectTimeoutRef.current);
+          }
+          
+          reconnectTimeoutRef.current = setTimeout(() => {
+            console.log('[useRoomConnection] Attempting to reconnect...');
+            connectToRoom(currentRoomId);
+          }, 3000);
         }
       };
       
-      socketRef.current.onmessage = (event) => {
+      socket.onerror = (error) => {
+        console.error('[useRoomConnection] WebSocket error:', error);
+      };
+      
+      // Send a connection check message after WebSocket connects
+      socket.addEventListener('open', () => {
+        socket.send(JSON.stringify({ type: 'ping' }));
+        console.log('[useRoomConnection] Sent initial ping on connection');
+      });
+      
+      socket.onmessage = (event) => {
         // Handle binary data (audio)
         if (event.data instanceof Blob) {
           console.log(`Received binary data: ${event.data.size} bytes`);
@@ -241,12 +245,14 @@ export function useRoomConnection({
           console.error('Error parsing WebSocket message:', error);
         }
       };
-      return newRoomId;
+      
+      return currentRoomId || null;
     } catch (error) {
-      console.error('Error connecting to room:', error);
+      console.error('[useRoomConnection] Error connecting to room:', error);
       setRoomState(prev => ({
         ...prev,
-        error: 'Failed to connect to room'
+        status: 'disconnected',
+        error: (error as Error).message
       }));
       return null;
     }
@@ -259,19 +265,18 @@ export function useRoomConnection({
       socketRef.current = null;
     }
     
-    if (mediaRecorderRef.current && roomState.isRecording) {
+    if (mediaRecorderRef.current && roomState.status === 'recording') {
       stopMicrophone();
     }
     
     setRoomState({
-      isConnected: false,
-      isRecording: false,
+      status: 'disconnected',
+      participants: [],
       currentRoom: null,
       error: null,
-      participants: []
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomState.isRecording]);
+  }, [roomState.status]);
   
   // Start recording from microphone
   const startMicrophone = useCallback(async () => {
@@ -298,7 +303,7 @@ export function useRoomConnection({
       
       setRoomState(prev => ({
         ...prev,
-        isRecording: true,
+        status: 'recording',
         error: null
       }));
       
@@ -317,34 +322,63 @@ export function useRoomConnection({
   
   // Get a shareable URL for the current room
   const getRoomConnectionUrl = useCallback(() => {
+    console.log('[useRoomConnection] Getting room URL for:', roomState.currentRoom);
     if (!roomState.currentRoom) return null;
     
-    const url = new URL(window.location.href);
+    const url = new URL('http://localhost:8000');
     url.search = `?room=${roomState.currentRoom}`;
     return url.toString();
   }, [roomState.currentRoom]);
   
-  // Clean up on unmount
+  // Handle page unload
   useEffect(() => {
-    return () => {
+    const handleBeforeUnload = () => {
+      console.log('[useRoomConnection] Page unloading, cleaning up connections');
       if (socketRef.current) {
         socketRef.current.close();
-      }
-      
-      if (mediaRecorderRef.current) {
-        mediaRecorderRef.current.stop();
       }
       
       if (audioStream) {
         audioStream.getTracks().forEach(track => track.stop());
       }
+    };
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [audioStream]);
+  
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      console.log('[useRoomConnection] Hook unmounting, cleaning up');
+      
+      if (socketRef.current) {
+        socketRef.current.close();
+        socketRef.current = null;
+      }
+      
+      if (audioStream) {
+        audioStream.getTracks().forEach(track => track.stop());
+        setAudioStream(null);
+      }
+      
+      if (mediaRecorderRef.current) {
+        if (mediaRecorderRef.current.state !== 'inactive') {
+          mediaRecorderRef.current.stop();
+        }
+        mediaRecorderRef.current = null;
+      }
       
       if (pingIntervalRef.current) {
         clearInterval(pingIntervalRef.current);
+        pingIntervalRef.current = null;
       }
       
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
       }
     };
   }, [audioStream]);
