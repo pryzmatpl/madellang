@@ -188,7 +188,7 @@ export function useRoomConnection({
         console.log('[useRoomConnection] Sent initial ping on connection');
       });
       
-      socket.onmessage = (event) => {
+      socket.onmessage = async (event) => {
         try {
           // Handle text messages (JSON)
           if (typeof event.data === 'string') {
@@ -236,12 +236,13 @@ export function useRoomConnection({
             const size = event.data instanceof Blob ? event.data.size : event.data.byteLength;
             console.log(`[useRoomConnection] Received binary data: ${size} bytes`);
             
-            // Convert ArrayBuffer to proper audio format before playing
             if (onTranslatedAudio) {
-              // Create a properly formatted WAV file from the raw PCM data
-              const wavBlob = createWavFromPcm(event.data instanceof Blob ? 
-                event.data.arrayBuffer() : event.data);
-              onTranslatedAudio(wavBlob);
+              // Audio data is already in WAV format due to backend conversion
+              const audioBlob = new Blob(
+                [event.data], 
+                { type: 'audio/wav' }
+              );
+              onTranslatedAudio(audioBlob);
             }
           }
         } catch (error) {
@@ -406,19 +407,21 @@ export function useRoomConnection({
 }
 
 // Helper function to create a WAV blob from PCM data
-function createWavFromPcm(pcmBuffer: any): Blob {
+function createWavFromPcm(pcmBuffer: ArrayBuffer): Blob {
   // Create WAV header
   const pcmData = new Int16Array(pcmBuffer);
   const numChannels = 1;
-  const sampleRate = 44100;
+  const sampleRate = 16000;
   const bitsPerSample = 16;
   
   // Calculate file size
   const byteRate = sampleRate * numChannels * bitsPerSample / 8;
   const blockAlign = numChannels * bitsPerSample / 8;
-  const dataSize = pcmData.length * 2;
+  const dataSize = pcmData.length * (bitsPerSample / 8);
   const headerSize = 44;
   const wavSize = headerSize + dataSize;
+  
+  console.log(`Creating WAV: channels=${numChannels}, sampleRate=${sampleRate}, bits=${bitsPerSample}, dataSize=${dataSize}`);
   
   // Create buffer for WAV file
   const wavBuffer = new ArrayBuffer(wavSize);
