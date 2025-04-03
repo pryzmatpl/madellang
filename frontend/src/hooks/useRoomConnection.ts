@@ -72,6 +72,8 @@ export function useRoomConnection({
   const audioChunksRef = useRef<Blob[]>([]);
   const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const audioProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
   
   // Connection State logging for debugging
   useEffect(() => {
@@ -281,41 +283,48 @@ export function useRoomConnection({
   // Start recording from microphone
   const startMicrophone = useCallback(async () => {
     try {
+      console.log('[useRoomConnection] Starting microphone');
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       setAudioStream(stream);
       
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm' // Use a common format that works in most browsers
-      });
+      // Configure audio context and processor
+      const audioContext = new AudioContext();
+      const source = audioContext.createMediaStreamSource(stream);
+      const processor = audioContext.createScriptProcessor(4096, 1, 1);
       
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
+      source.connect(processor);
+      processor.connect(audioContext.destination);
       
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          // Send the audio chunk to the server immediately
-          if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-            console.log(`[useRoomConnection] Sending ${event.data.size} bytes of audio`);
-            socketRef.current.send(event.data);
+      // Process audio data and send over WebSocket
+      processor.onaudioprocess = (e) => {
+        if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+          // Get audio data from the buffer
+          const inputData = e.inputBuffer.getChannelData(0);
+          
+          // Convert to 16-bit PCM
+          const pcmData = new Int16Array(inputData.length);
+          for (let i = 0; i < inputData.length; i++) {
+            pcmData[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
           }
+          
+          // Send as binary data
+          console.log(`[useRoomConnection] Sending ${pcmData.byteLength} bytes of audio`);
+          socketRef.current.send(pcmData.buffer);
         }
       };
       
-      // Use smaller time slices for more responsive audio
-      mediaRecorder.start(100); // 100ms chunks for more real-time feeling
+      // Store references for cleanup
+      audioProcessorRef.current = processor;
+      audioContextRef.current = audioContext;
       
       setRoomState(prev => ({
         ...prev,
-        status: 'recording',
+        status: 'recording'
       }));
       
       return true;
     } catch (error) {
-      console.error("Error accessing microphone:", error);
-      setRoomState(prev => ({
-        ...prev,
-        error: "Could not access microphone. Please check permissions."
-      }));
+      console.error('[useRoomConnection] Error accessing microphone:', error);
       return false;
     }
   }, []);

@@ -11,7 +11,7 @@ class AudioProcessor:
     def __init__(self, model_manager, translation_service=None):
         self.model_manager = model_manager
         self.translation_service = translation_service
-        self.mirror_mode = False  # Initialize mirror mode property
+        self.mirror_mode = True  # Initialize mirror mode to True by default
         # Audio settings
         self.sample_rate = 16000
         self.chunk_size = 4096
