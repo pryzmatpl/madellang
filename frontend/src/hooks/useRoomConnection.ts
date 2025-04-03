@@ -33,12 +33,12 @@ interface PongMessage {
 
 // Union type of all message types
 type WebSocketMessage = 
-  | TranslatedAudioMessage 
-  | ConnectionEstablishedMessage 
-  | UserJoinedMessage 
-  | UserLeftMessage 
-  | ErrorMessage
-  | PongMessage;
+| TranslatedAudioMessage 
+| ConnectionEstablishedMessage 
+| UserJoinedMessage 
+| UserLeftMessage 
+| ErrorMessage
+| PongMessage;
 
 interface RoomState {
   status: string;
@@ -189,62 +189,69 @@ export function useRoomConnection({
       });
       
       socket.onmessage = (event) => {
-        // Handle binary data (audio)
-        if (event.data instanceof Blob) {
-          console.log(`Received binary data: ${event.data.size} bytes`);
-          onTranslatedAudio(event.data);
-          return;
-        }
-        
-        // Handle JSON messages
         try {
-          const message = JSON.parse(event.data) as WebSocketMessage;
-          console.log(`Received message: ${message.type}`);
-          
-          switch (message.type) {
-            case 'connection_established':
+          // Handle text messages (JSON)
+          if (typeof event.data === 'string') {
+            const message = JSON.parse(event.data) as WebSocketMessage;
+            console.log(`[useRoomConnection] Received message: ${message.type}`);
+            
+            console.log(`Received message: ${message.type}`);
+            
+            switch (message.type) {
+              case 'connection_established':
               setRoomState(prev => ({
                 ...prev,
                 currentRoom: message.room_id,
               }));
               break;
-            
-            case 'pong':
+              
+              case 'pong':
               // No action needed, this just confirms the connection is alive
               break;
               
-            case 'user_joined':
+              case 'user_joined':
               setRoomState(prev => ({
                 ...prev,
                 participants: [...(prev.participants || []), message.user_id]
               }));
               break;
-            
-            case 'user_left':
+              
+              case 'user_left':
               setRoomState(prev => ({
                 ...prev,
                 participants: (prev.participants || []).filter(id => id !== message.user_id)
               }));
               break;
-            
-            case 'error':
+              
+              case 'error':
               setRoomState(prev => ({
                 ...prev,
                 error: message.message
               }));
               break;
+            }
+          }
+          // Handle binary audio data
+          else if (event.data instanceof ArrayBuffer || event.data instanceof Blob) {
+            const size = event.data instanceof Blob ? event.data.size : event.data.byteLength;
+            console.log(`[useRoomConnection] Received binary data: ${size} bytes`);
             
-            case 'translated_audio':
-              // Handle translated audio if it comes as JSON
-              // This should be binary data but adding a fallback
-              if ('audio' in message) {
-                const audioBlob = new Blob([message.audio], { type: 'audio/webm' });
-                onTranslatedAudio(audioBlob);
+            // Convert ArrayBuffer to AudioBuffer and play
+            if (onTranslatedAudio) {
+              // If it's already a Blob, use it directly
+              if (event.data instanceof Blob) {
+                onTranslatedAudio(event.data);
+              } 
+              // If it's an ArrayBuffer, we need to convert it to a proper audio format
+              else {
+                // Create WAV from PCM data
+                const wavBlob = createWavFromPcm(event.data);
+                onTranslatedAudio(wavBlob);
               }
-              break;
+            }
           }
         } catch (error) {
-          console.error('Error parsing WebSocket message:', error);
+          console.error('[useRoomConnection] Error processing message:', error);
         }
       };
       
@@ -402,4 +409,60 @@ export function useRoomConnection({
     getRoomUrl: getRoomConnectionUrl,
     audioStream
   };
+}
+
+// Helper function to create a WAV blob from PCM data
+function createWavFromPcm(pcmBuffer: ArrayBuffer): Blob {
+  // Create WAV header
+  const pcmData = new Int16Array(pcmBuffer);
+  const numChannels = 1;
+  const sampleRate = 16000;
+  const bitsPerSample = 16;
+  
+  // Calculate file size
+  const byteRate = sampleRate * numChannels * bitsPerSample / 8;
+  const blockAlign = numChannels * bitsPerSample / 8;
+  const dataSize = pcmData.length * 2;
+  const headerSize = 44;
+  const wavSize = headerSize + dataSize;
+  
+  // Create buffer for WAV file
+  const wavBuffer = new ArrayBuffer(wavSize);
+  const view = new DataView(wavBuffer);
+  
+  // Write WAV header
+  // "RIFF" chunk descriptor
+  writeString(view, 0, 'RIFF');
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(view, 8, 'WAVE');
+  
+  // "fmt " sub-chunk
+  writeString(view, 12, 'fmt ');
+  view.setUint32(16, 16, true);           // Subchunk size
+  view.setUint16(20, 1, true);            // AudioFormat (PCM)
+  view.setUint16(22, numChannels, true);  // Channels
+  view.setUint32(24, sampleRate, true);   // Sample rate
+  view.setUint32(28, byteRate, true);     // Byte rate
+  view.setUint16(32, blockAlign, true);   // Block align
+  view.setUint16(34, bitsPerSample, true);// Bits per sample
+  
+  // "data" sub-chunk
+  writeString(view, 36, 'data');
+  view.setUint32(40, dataSize, true);     // Subchunk size
+  
+  // Write PCM data
+  const pcmOffset = 44;
+  for (let i = 0; i < pcmData.length; i++) {
+    view.setInt16(pcmOffset + i * 2, pcmData[i], true);
+  }
+  
+  // Return as Blob
+  return new Blob([wavBuffer], { type: 'audio/wav' });
+}
+
+// Helper to write strings to DataView
+function writeString(view: DataView, offset: number, string: string) {
+  for (let i = 0; i < string.length; i++) {
+    view.setUint8(offset + i, string.charCodeAt(i));
+  }
 }
