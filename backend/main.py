@@ -403,7 +403,7 @@ async def process_audio_data(room_id: str, user_id: str, audio_data: bytes, webs
         if audio_processor.mirror_mode:
             logger.info(f"Mirror mode active: echoing {len(audio_data)} bytes back to sender")
             # In mirror mode, directly send the audio back to the same client
-            await websocket.send_bytes(audio_data.decode())
+            await websocket.send_bytes(audio_data)
             return
 
         # Normal translation mode logic

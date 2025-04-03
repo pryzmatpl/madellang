@@ -23,28 +23,49 @@ export function useAudioPlayback({
         audioContextRef.current = new AudioContext();
       }
       
+      // Ensure we have proper audio content type
+      const audioBlob = blob.type ? blob : new Blob([blob], { type: 'audio/wav' });
+      
       // Convert blob to ArrayBuffer
-      const arrayBuffer = await blob.arrayBuffer();
+      const arrayBuffer = await audioBlob.arrayBuffer();
       
       // Decode the audio data
-      const audioBuffer = await audioContextRef.current.decodeAudioData(arrayBuffer);
-      
-      // Create source node
-      const source = audioContextRef.current.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(audioContextRef.current.destination);
-      
-      // Play the audio
-      setIsPlaying(true);
-      source.start(0);
-      
-      // Set up onended event
-      source.onended = () => {
-        setIsPlaying(false);
-        processQueue();
-      };
-      
-      return true;
+      try {
+        const audioBuffer = await audioContextRef.current.decodeAudioData(arrayBuffer);
+        
+        // Create source node
+        const source = audioContextRef.current.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioContextRef.current.destination);
+        
+        // Play the audio
+        setIsPlaying(true);
+        source.start(0);
+        
+        // Set up onended event
+        source.onended = () => {
+          setIsPlaying(false);
+          processQueue();
+        };
+        
+        return true;
+      } catch (decodeError) {
+        console.error("Audio decode error, trying alternative method:", decodeError);
+        
+        // Alternative approach - create an audio element and play directly
+        const audio = new Audio(URL.createObjectURL(audioBlob));
+        setIsPlaying(true);
+        await audio.play();
+        
+        // Set up ended event
+        audio.onended = () => {
+          setIsPlaying(false);
+          URL.revokeObjectURL(audio.src);
+          processQueue();
+        };
+        
+        return true;
+      }
     } catch (error) {
       console.error("Error playing audio:", error);
       setIsPlaying(false);
