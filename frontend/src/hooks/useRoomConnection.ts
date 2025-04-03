@@ -236,18 +236,12 @@ export function useRoomConnection({
             const size = event.data instanceof Blob ? event.data.size : event.data.byteLength;
             console.log(`[useRoomConnection] Received binary data: ${size} bytes`);
             
-            // Convert ArrayBuffer to AudioBuffer and play
+            // Convert ArrayBuffer to proper audio format before playing
             if (onTranslatedAudio) {
-              // If it's already a Blob, use it directly
-              if (event.data instanceof Blob) {
-                onTranslatedAudio(event.data);
-              } 
-              // If it's an ArrayBuffer, we need to convert it to a proper audio format
-              else {
-                // Create WAV from PCM data
-                const wavBlob = createWavFromPcm(event.data);
-                onTranslatedAudio(wavBlob);
-              }
+              // Create a properly formatted WAV file from the raw PCM data
+              const wavBlob = createWavFromPcm(event.data instanceof Blob ? 
+                event.data.arrayBuffer() : event.data);
+              onTranslatedAudio(wavBlob);
             }
           }
         } catch (error) {
@@ -412,11 +406,11 @@ export function useRoomConnection({
 }
 
 // Helper function to create a WAV blob from PCM data
-function createWavFromPcm(pcmBuffer: ArrayBuffer): Blob {
+function createWavFromPcm(pcmBuffer: any): Blob {
   // Create WAV header
   const pcmData = new Int16Array(pcmBuffer);
   const numChannels = 1;
-  const sampleRate = 16000;
+  const sampleRate = 44100;
   const bitsPerSample = 16;
   
   // Calculate file size
