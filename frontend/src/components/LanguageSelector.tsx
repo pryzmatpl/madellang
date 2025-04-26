@@ -8,7 +8,8 @@ import {
 } from "@/components/ui/select";
 
 // Define the backend URL directly if config import fails
-const BACKEND_URL = 'http://localhost:8000';
+//
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
 interface Language {
   code: string;
@@ -46,14 +47,22 @@ const LanguageSelector: React.FC<LanguageSelectorProps> = ({
         
         // Handle the dictionary format from the backend
         // The backend now returns: { "en": "English", "es": "Spanish", ... }
-        const languagesList = Object.entries(data.languages).map(([code, name]) => ({
-          code,
-          name: String(name)
-        }));
-        
+        //const languagesList = Object.entries(data.languages).map(([code, name]) => ({
+        //  code,
+        //  name: String(name)
+        //}));
+        // Ignore frontend calling for list, this will not change much for launch
+        const languagesList = [
+          { code: "en", name: "English" },
+          { code: "es", name: "Spanish" },
+          { code: "fr", name: "French" },
+          { code: "de", name: "German" },
+          { code: "zh", name: "Chinese" },
+          { code: "ja", name: "Japanese" }
+        ];
         // Sort languages by name
+
         languagesList.sort((a, b) => a.name.localeCompare(b.name));
-        
         setLanguages(languagesList);
         console.log("Loaded languages:", languagesList);
       } catch (err) {

@@ -23,8 +23,8 @@ Real-time voice translation application using Whisper for speech recognition and
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/voice-translation-app.git
-   cd voice-translation-app
+   git clone https://github.com/piotroxp/madellang.git
+   cd madellang
    ```
 
 2. Adjust environment variables in docker-compose.yml if needed:
@@ -33,7 +33,7 @@ Real-time voice translation application using Whisper for speech recognition and
 
 3. Start the application:
    ```bash
-   docker-compose up -d
+   make dev
    ```
 
 4. Access the web interface at http://localhost:3000

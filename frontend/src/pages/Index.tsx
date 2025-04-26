@@ -17,7 +17,7 @@ import AudioOutputControl from "@/components/AudioOutputControl";
 
 const Index = () => {
   const { toast } = useToast();
-  const [targetLanguage, setTargetLanguage] = useState("es");
+  const [targetLanguage, setTargetLanguage] = useState("en");
   const [isActive, setIsActive] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [showQRCode, setShowQRCode] = useState(false);
