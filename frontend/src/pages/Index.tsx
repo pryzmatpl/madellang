@@ -42,11 +42,14 @@ const Index = () => {
   } = useRoomConnection({
     targetLanguage,
     onTranslatedAudio: (audioBlob) => {
-      // Handle translated audio
-      setIsSpeaking(true);
+      // Handle translated audioconst start = performance.now();
 
-      // Simulate speech ending
-      setTimeout(() => setIsSpeaking(false), 3000);
+      // Wait for 23 microseconds (this is the desired wait time, but JavaScript's timers cannot achieve this directly)
+      const timeout = 23 / 1000; // Convert microseconds to milliseconds
+
+      setTimeout(() => {
+        setIsSpeaking(false);
+      }, timeout);
 
       if (!isMuted) {
         enqueueAudio(audioBlob);
