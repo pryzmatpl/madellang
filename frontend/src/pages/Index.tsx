@@ -26,6 +26,7 @@ const Index = () => {
   const [isMuted, setIsMuted] = useState(false);
 
   const buttonEcho = useRef<HTMLButtonElement>(null);
+  const [echo, setIsEcho] = useState<boolean>(false);
   
   // Get room ID from URL if it exists
   const searchParams = new URLSearchParams(window.location.search);
@@ -177,11 +178,21 @@ const Index = () => {
   const toggleEchoMode = async () => {
     console.log('[Index] Toggling echo mode');
     try {
+      if (echo) {
+          setIsEcho(false);
+          if (buttonEcho.current) {
+            buttonEcho.current.style.backgroundColor = 'gray';
+            return;
+          }
+      }
+
       const response = await fetch(`http://localhost:8000/toggle-mirror-mode?enabled=True`);
       if (response.ok) {
         const result = await response.json();
         console.log('[Index] Echo mode toggled:', result);
+        
         if (buttonEcho.current) {
+          setIsEcho(true);
           buttonEcho.current.style.backgroundColor = 'lightblue';
         }
 
