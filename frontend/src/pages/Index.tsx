@@ -179,6 +179,12 @@ const Index = () => {
     console.log('[Index] Toggling echo mode');
     try {
       if (echo) {
+          const response = await fetch(`http://localhost:8000/toggle-mirror-mode?enabled=False`);
+          if (response.ok) {
+            const result = await response.json();
+            console.log('[Index] Echo mode disabled:', result);
+          }
+
           setIsEcho(false);
           if (buttonEcho.current) {
             buttonEcho.current.style.backgroundColor = 'gray';
@@ -190,7 +196,7 @@ const Index = () => {
       if (response.ok) {
         const result = await response.json();
         console.log('[Index] Echo mode toggled:', result);
-        
+
         if (buttonEcho.current) {
           setIsEcho(true);
           buttonEcho.current.style.backgroundColor = 'lightblue';
