@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent } from "@/components/ui/card";
 import { Mic, MicOff, Share2, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,8 @@ const Index = () => {
   const [currentMode, setCurrentMode] = useState<'translation' | 'tutor'>('translation');
   const { enqueueAudio } = useAudioPlayback();
   const [isMuted, setIsMuted] = useState(false);
+
+  const buttonEcho = useRef<HTMLButtonElement>(null);
   
   // Get room ID from URL if it exists
   const searchParams = new URLSearchParams(window.location.search);
@@ -41,13 +43,16 @@ const Index = () => {
     onTranslatedAudio: (audioBlob) => {
       // Handle translated audio
       setIsSpeaking(true);
-      setTimeout(() => setIsSpeaking(false), 3000); // Simulate speech ending
+
+      // Simulate speech ending
+      setTimeout(() => setIsSpeaking(false), 3000);
+
       if (!isMuted) {
         enqueueAudio(audioBlob);
       }
     }
   });
-  
+
   // Connect to room from URL or create a new one
   useEffect(() => {
     if (roomIdFromUrl) {
@@ -176,6 +181,10 @@ const Index = () => {
       if (response.ok) {
         const result = await response.json();
         console.log('[Index] Echo mode toggled:', result);
+        if (buttonEcho.current) {
+          buttonEcho.current.style.backgroundColor = 'lightblue';
+        }
+
         toast({
           title: "Echo Mode Enabled",
           description: "Your speech will be echoed back to you without translation.",
@@ -320,6 +329,7 @@ const Index = () => {
             size="sm"
             onClick={toggleEchoMode}
             className="ml-2"
+            ref={buttonEcho}
           >
             Echo Test
           </Button>
