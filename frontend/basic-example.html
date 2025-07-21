@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Real-Time Speech Pipeline</title>
+  <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.development.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/babel-standalone@6/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    function App() {
+      const [transcript, setTranscript] = useState('');
+      const [translated, setTranslated] = useState('');
+      const [error, setError] = useState('');
+      const [isRecording, setIsRecording] = useState(false);
+      let ws = null;
+      let mediaRecorder = null;
+
+      const startRecording = async () => {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 44100 } });
+          mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+          ws = new WebSocket('ws://localhost:8000/ws');
+
+          ws.onmessage = (event) => {
+            if (event.data instanceof Blob) {
+              const audio = new Audio(URL.createObjectURL(event.data));
+              audio.play();
+            } else {
+              const data = JSON.parse(event.data);
+              if (data.transcript) setTranscript(data.transcript);
+              if (data.translated) setTranslated(data.translated);
+              if (data.error) setError(data.error);
+            }
+          };
+
+          ws.onclose = () => {
+            setIsRecording(false);
+            mediaRecorder.stop();
+          };
+
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0 && ws.readyState === WebSocket.OPEN) {
+              ws.send(event.data);
+            }
+          };
+
+          mediaRecorder.start(100); // Send audio chunks every 100ms
+          setIsRecording(true);
+        } catch (err) {
+          setError('Failed to start recording: ' + err.message);
+        }
+      };
+
+      const stopRecording = () => {
+        if (mediaRecorder) {
+          mediaRecorder.stop();
+        }
+        if (ws) {
+          ws.close();
+        }
+        setIsRecording(false);
+      };
+
+      useEffect(() => {
+        return () => {
+          if (ws) ws.close();
+          if (mediaRecorder) mediaRecorder.stop();
+        };
+      }, []);
+
+      return (
+        <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4">
+          <h1 className="text-3xl font-bold mb-4">Real-Time Speech Pipeline</h1>
+          <div className="w-full max-w-md bg-white p-6 rounded-lg shadow-md">
+            <button
+              onClick={isRecording ? stopRecording : startRecording}
+              className={`w-full py-2 px-4 rounded ${isRecording ? 'bg-red-500' : 'bg-green-500'} text-white font-semibold hover:bg-opacity-90`}
+            >
+              {isRecording ? 'Stop Recording' : 'Start Recording'}
+            </button>
+            {error && <p className="text-red-500 mt-2">{error}</p>}
+            <div className="mt-4">
+              <h2 className="text-lg font-semibold">Transcription (English):</h2>
+              <p className="mt-1 text-gray-700">{transcript || 'Waiting for transcription...'}</p>
+            </div>
+            <div className="mt-4">
+              <h2 className="text-lg font-semibold">Translation (Spanish):</h2>
+              <p className="mt-1 text-gray-700">{translated || 'Waiting for translation...'}</p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>
