@@ -43,9 +43,8 @@ PyYAML==6.0.2
 regex==2024.11.6
 requests==2.32.3
 safetensors==0.5.3
-setuptools==3.3
+setuptools==80.9.0
 six==1.17.0
-socketio==0.2.1
 sortedcontainers==2.4.0
 soundfile==0.13.1
 sympy==1.13.1
@@ -58,4 +57,5 @@ triton==3.2.0
 types-dataclasses==0.6.6
 typing_extensions==4.12.2
 urllib3==2.3.0
+vosk==0.3.50
 wheel==0.45.1
