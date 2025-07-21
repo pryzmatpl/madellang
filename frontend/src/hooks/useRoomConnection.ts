@@ -235,11 +235,13 @@ export function useRoomConnection({
           else if (event.data instanceof ArrayBuffer || event.data instanceof Blob) {
             const size = event.data instanceof Blob ? event.data.size : event.data.byteLength;
             console.log(`[useRoomConnection] Received binary data: ${size} bytes`);
-            
+
+            console.log(event.data)
+
             if (onTranslatedAudio) {
               // Audio data is already in WAV format due to backend conversion
               const audioBlob = new Blob(
-                [event.data], 
+                [event.data],
                 { type: 'audio/wav' }
               );
               onTranslatedAudio(audioBlob);

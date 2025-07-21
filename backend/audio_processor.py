@@ -4,6 +4,7 @@ import numpy as np
 from typing import Optional, Dict, Any, Tuple
 import time
 import logging
+import wave
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,20 @@ class AudioProcessor:
             print(f"Error in audio processing: {e}")
             return b""
 
+    def to_wav(audio_chunk: bytes, sample_rate: int=16000, num_channels: int = 1, sample_width: int = 2):
+        # Create a BytesIO object to hold the WAV data
+        wav_io = io.BytesIO()
+
+        # Create a WAV file in memory
+        with wave.open(wav_io, 'wb') as wav_file:
+            wav_file.setnchannels(num_channels)
+            wav_file.setsampwidth(sample_width)  # 2 bytes for 16-bit audio
+            wav_file.setframerate(sample_rate)
+            wav_file.writeframes(audio_chunk)
+
+        # Return the WAV data as bytes
+        return wav_io.getvalue()
+
     async def process_audio_chunk(self, room_id: str, user_id: str, 
                                  audio_chunk: bytes, target_lang: str, websocket) -> Optional[Dict]:
         """Process incoming audio chunk and return translation result"""
@@ -93,9 +108,10 @@ class AudioProcessor:
             # If mirror mode is enabled, simply echo the audio back
             if self.mirror_mode:
                 logger.info(f"Mirroring audio back to sender: {len(audio_chunk)} bytes")
+                logger.debug(audio_chunk)
                 # Send the audio directly back to the same websocket that sent it
                 try:
-                    await websocket.send_bytes(audio_chunk)
+                    await websocket.send_bytes(self.to_wav(audio_chunk))
                     return True
                 except Exception as e:
                     logger.error(f"Error sending mirrored audio: {str(e)}")

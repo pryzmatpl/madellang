@@ -25,22 +25,24 @@ export function useAudioPlayback({
       
       // Ensure we have proper audio content type
       const audioBlob = blob.type ? blob : new Blob([blob], { type: 'audio/wav' });
-      
+
       // Convert blob to ArrayBuffer
       const arrayBuffer = await audioBlob.arrayBuffer();
       
       // Decode the audio data
       try {
         const audioBuffer = await audioContextRef.current.decodeAudioData(arrayBuffer);
-        
         // Create source node
         const source = audioContextRef.current.createBufferSource();
         source.buffer = audioBuffer;
+
+        console.debug("AudioBlob arrayBuffer size: " + audioBuffer.length);
         source.connect(audioContextRef.current.destination);
         
         // Play the audio
         setIsPlaying(true);
         source.start(0);
+        console.debug("AudioContext latency: " + audioContextRef.current.outputLatency)
         
         // Set up onended event
         source.onended = () => {

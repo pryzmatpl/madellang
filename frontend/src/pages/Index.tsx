@@ -42,11 +42,9 @@ const Index = () => {
   } = useRoomConnection({
     targetLanguage,
     onTranslatedAudio: (audioBlob) => {
-      // Handle translated audioconst start = performance.now();
-
       // Wait for 23 microseconds (this is the desired wait time, but JavaScript's timers cannot achieve this directly)
+      // 44 kHz sampling is minimum to go up the human ear scale
       const timeout = 23 / 1000; // Convert microseconds to milliseconds
-
       setTimeout(() => {
         setIsSpeaking(false);
       }, timeout);
