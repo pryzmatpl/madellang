@@ -1,6 +1,6 @@
 #!/bin/bash
 # Activate virtual environment
-source venv/bin/activate
+source ./venv/bin/activate
 
 # Set environment variables for AMD GPU
 export HSA_OVERRIDE_GFX_VERSION=11.0.0

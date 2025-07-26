@@ -2,26 +2,18 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { getCurrentOrder, confirmOrder } from '@/services/order';
+import { getCurrentOrder, confirmOrder, Order } from '@/services/order';
 import { useState } from 'react';
-
-// Define types if not present
-interface OrderItem {
-  id: string;
-  name: string;
-  quantity: number;
-  modifiers?: string[];
-  price: number;
-}
-interface Order {
-  items: OrderItem[];
-  total: number;
-}
 
 const OrderSummaryPage = () => {
   const navigate = useNavigate();
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const { data, isLoading, error, refetch } = useQuery<Order, Error>(['order', 'current'], getCurrentOrder);
+  
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['order', 'current'],
+    queryFn: getCurrentOrder,
+  });
+  
   const confirmMutation = useMutation({
     mutationFn: confirmOrder,
     onSuccess: () => navigate('/confirmation'),
@@ -59,7 +51,7 @@ const OrderSummaryPage = () => {
         </CardHeader>
         <CardContent>
           <ul className="space-y-4">
-            {data.items.map(item => (
+            {data.items.map((item) => (
               <li key={item.id} className="border-b pb-2">
                 <div className="flex justify-between items-center">
                   <span className="font-medium">{item.quantity}x {item.name}</span>
@@ -78,8 +70,8 @@ const OrderSummaryPage = () => {
         </CardContent>
         <CardFooter className="flex gap-4 justify-end">
           <Button variant="outline" onClick={() => navigate('/order')}>Modify Order</Button>
-          <Button onClick={() => confirmMutation.mutate()} disabled={confirmMutation.isLoading}>
-            {confirmMutation.isLoading ? 'Confirming...' : 'Confirm Order'}
+          <Button onClick={() => confirmMutation.mutate()} disabled={confirmMutation.isPending}>
+            {confirmMutation.isPending ? 'Confirming...' : 'Confirm Order'}
           </Button>
         </CardFooter>
       </Card>
