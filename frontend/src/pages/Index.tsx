@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Card, CardContent } from "@/components/ui/card";
 import { Mic, MicOff, Share2, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -31,18 +31,9 @@ const Index = () => {
   // Get room ID from URL if it exists
   const searchParams = new URLSearchParams(window.location.search);
   const roomIdFromUrl = searchParams.get('room');
-  
-  const {
-    roomState,
-    connectToRoom,
-    startMicrophone,
-    stopMicrophone,
-    getRoomUrl,
-    audioStream
-  } = useRoomConnection({
-    targetLanguage,
-    onTranslatedAudio: (audioBlob) => {
-      // Wait for 23 microseconds (this is the desired wait time, but JavaScript's timers cannot achieve this directly)
+
+  const onTranslatedAudio = useCallback ((audioBlob: Blob) =>
+  {
       // 44 kHz sampling is minimum to go up the human ear scale
       const timeout = 23 / 1000; // Convert microseconds to milliseconds
       setTimeout(() => {
@@ -52,45 +43,33 @@ const Index = () => {
       if (!isMuted) {
         enqueueAudio(audioBlob);
       }
-    }
+  },[isMuted, enqueueAudio]);
+
+  const {
+    roomState,
+    connectToRoom,
+    startMicrophone,
+    stopMicrophone,
+    getRoomUrl,
+    audioStream
+  } = useRoomConnection({
+    targetLanguage,
+    onTranslatedAudio
   });
 
   // Connect to room from URL or create a new one
   useEffect(() => {
-    if (roomIdFromUrl) {
-      console.log('[Index] Connecting to room from URL:', roomIdFromUrl);
-      connectToRoom(roomIdFromUrl);
-      
-      // Fix substring handling here too
-      const roomIdDisplay = roomIdFromUrl.substring(0, 8) + '...';
-      
-      toast({
-        title: "Joined Translation Room",
-        description: `You've joined room ${roomIdDisplay}`,
-      });
-    }
+        if (roomIdFromUrl) {
+          console.log('[Index] Connecting to room from URL:', roomIdFromUrl);
+          connectToRoom(roomIdFromUrl);
+          const roomIdDisplay = roomIdFromUrl.substring(0, 8) + '...';
+          toast({
+            title: "Joined Translation Room",
+            description: `You've joined room ${roomIdDisplay}`,
+          });
+        }
   }, [roomIdFromUrl, connectToRoom, toast]);
-  
-  // Fix the room connection when using a shared link
-  useEffect(() => {
-    // Check if we have a room ID in the URL
-    const params = new URLSearchParams(window.location.search);
-    const roomIdParam = params.get('room');
-    
-    if (roomIdParam) {
-      console.log('[Index] Connecting to room from URL:', roomIdParam);
-      
-      // Use setTimeout to ensure the component is fully mounted
-      setTimeout(() => {
-        connectToRoom(roomIdParam);
-        
-        toast({
-          title: "Joined Translation Room",
-          description: `You've joined room ${roomIdParam.substring(0, 8)}...`,
-        });
-      }, 500);
-    }
-  }, [connectToRoom, toast]);
+
   
   // Handle language change - using value directly
   const handleLanguageChange = (newLanguage: string) => {

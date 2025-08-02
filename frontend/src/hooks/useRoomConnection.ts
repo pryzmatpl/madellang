@@ -127,9 +127,7 @@ export function useRoomConnection({
       const wsUrl = `${protocol}//localhost:8000/ws/${currentRoomId}?target_lang=${targetLanguage}`;
       console.log('[useRoomConnection] Connecting to WebSocket:', wsUrl);
 
-      if (!isMountedRef.current) return null;
-
-      // Create new WebSocket
+        // Create new WebSocket
       const socket = new WebSocket(wsUrl);
       socketRef.current = socket;
       
