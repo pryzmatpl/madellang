@@ -77,6 +77,7 @@ export function useRoomConnection({
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const audioProcessorRef = useRef<ScriptProcessorNode | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const reconnectingRef = useRef(false);
 
   // Stop recording from microphone
   const stopMicrophone = useCallback(() => {
@@ -98,16 +99,30 @@ export function useRoomConnection({
   
   // Connect to a room
   const connectToRoom = useCallback(async (roomId?: string): Promise<string | null> => {
+    if (reconnectingRef.current) {
+      console.log('[useRoomConnection] Reconnection already in progress');
+      return null;
+    }
     console.log('[useRoomConnection] Connecting to room, provided ID:', roomId);
     
     try {
+      reconnectingRef.current = true;
+
       // Clean up any existing connections
       if (socketRef.current) {
         console.log('[useRoomConnection] Closing existing WebSocket');
         socketRef.current.close();
         socketRef.current = null;
       }
-      
+
+
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+
+      if (!isMountedRef.current) return null; // ✅
+
       setRoomState(prev => ({ ...prev, status: 'connecting' }));
       
       // If roomId is provided, join that room; otherwise create a new room
@@ -130,7 +145,9 @@ export function useRoomConnection({
         // Create new WebSocket
       const socket = new WebSocket(wsUrl);
       socketRef.current = socket;
-      
+
+      if (!isMountedRef.current) return null;
+
       socket.onopen = () => {
         console.log('[useRoomConnection] WebSocket connection opened');
         setRoomState(prev => ({ 
@@ -154,6 +171,8 @@ export function useRoomConnection({
       
       socket.onclose = (event) => {
         console.warn(`[useRoomConnection] WebSocket closed with code: ${event.code}, reason: ${event.reason}, wasClean: ${event.wasClean}`);
+        reconnectingRef.current = false;
+
         if (!isMountedRef.current) return;
         setRoomState(prev => ({ ...prev, status: 'disconnected' }));
         
@@ -162,23 +181,26 @@ export function useRoomConnection({
           clearInterval(pingIntervalRef.current);
           pingIntervalRef.current = null;
         }
+
+
         
         // Attempt to reconnect if closure wasn't clean
-        if (!event.wasClean) {
+        if (!event.wasClean && isMountedRef.current && !reconnectingRef.current) {
           console.log('[useRoomConnection] Connection closed abnormally, will attempt to reconnect');
-          if (reconnectTimeoutRef.current) {
-            clearTimeout(reconnectTimeoutRef.current);
-          }
-          
+
           reconnectTimeoutRef.current = setTimeout(() => {
-            console.log('[useRoomConnection] Attempting to reconnect...');
-            connectToRoom(currentRoomId);
+            if (isMountedRef.current && !reconnectingRef.current) { // ✅ Double-check before reconnecting
+              console.log('[useRoomConnection] Attempting to reconnect...');
+              connectToRoom(roomState.currentRoom || undefined); // ✅ Use current room from state
+            }
           }, 3000);
         }
+
       };
       
       socket.onerror = (error) => {
         console.error('[useRoomConnection] WebSocket error:', error);
+        reconnectingRef.current = false;
         if (!isMountedRef.current) return;
       };
       
@@ -256,6 +278,8 @@ export function useRoomConnection({
       return currentRoomId || null;
     } catch (error) {
       console.error('[useRoomConnection] Error connecting to room:', error);
+      reconnectingRef.current = false; // ✅ Clear rec
+      if (!isMountedRef.current) return null;
       setRoomState(prev => ({
         ...prev,
         status: 'disconnected',
@@ -366,10 +390,13 @@ export function useRoomConnection({
   
   // Cleanup on unmount
   useEffect(() => {
+    isMountedRef.current = true;
+
     return () => {
-      if (!isMountedRef.current) return;
       console.log('[useRoomConnection] Hook unmounting, cleaning up');
-      
+
+      isMountedRef.current = false;
+
       if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
         socketRef.current.send(JSON.stringify({ type: 'close' }));
         socketRef.current.close(1000, 'Component unmounted');
