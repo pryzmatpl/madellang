@@ -170,6 +170,7 @@ class ConnectionManager:
 # Initialize the connection manager
 connection_manager = ConnectionManager()
 
+from fastapi import WebSocketDisconnect
 @app.websocket("/ws/{room_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str):
     """WebSocket endpoint with optimized connection flow"""
@@ -196,7 +197,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
         except Exception as e:
             logger.warning(f"Failed to send welcome message: {str(e)}")
             disconnected = True
-        
+
         # Only proceed if not disconnected
         if not disconnected:
             # Now add to room after confirming connection is working
@@ -262,7 +263,9 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                                 logger.debug(f"Sent keep-alive ping to {user_id}")
                             except Exception:
                                 disconnected = True
-                
+                except WebSocketDisconnect:
+                    logger.info(f"Client {user_id} disconnected abruptly")
+                    disconnected = True
                 except asyncio.CancelledError:
                     logger.info(f"Task for {user_id} was cancelled")
                     disconnected = True
