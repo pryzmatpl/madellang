@@ -10,13 +10,13 @@ logger = logging.getLogger(__name__)
 
 class AudioProcessor:
     def __init__(self, model_manager, translation_service=None):
-        self.attatch_wav_header = False
+        self.attatch_wav_header = True
         self.model_manager = model_manager
         self.translation_service = translation_service
         self.mirror_mode = True  # Initialize mirror mode to True by default
         # Audio settings
-        self.sample_rate = 16000
-        self.chunk_size = 4096
+        self.sample_rate = 44100
+        self.chunk_size = 8192
         # Add buffer management
         self.buffer = {}  # room_id -> user_id -> buffer
         self.last_processing = {}  # room_id -> user_id -> timestamp
