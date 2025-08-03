@@ -313,7 +313,16 @@ export function useRoomConnection({
   const startMicrophone = useCallback(async () => {
     try {
       console.log('[useRoomConnection] Starting microphone');
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            autoGainControl: false, // Disable to reduce artifacts
+            echoCancellation: false,
+            noiseSuppression: false,
+            channelCount: 1, // Force mono to avoid stereo issues
+            sampleRate: 44100, // Standard sample rate
+          },
+      });
+      console.log("[useRoomConnection] Microphone stream settings:", stream.getAudioTracks()[0].getSettings());
       setAudioStream(stream);
       
       // Configure audio context and processor
