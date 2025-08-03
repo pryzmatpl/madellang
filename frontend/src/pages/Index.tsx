@@ -148,7 +148,7 @@ const Index = () => {
 
   // Debug log for initial render and state changes
   useEffect(() => {
-    console.log("Room state:", roomState);
+    //console.log("Room state:", roomState);
     console.log("Is active:", isActive);
     console.log("Current language:", targetLanguage);
     console.log("Show QR code:", showQRCode);

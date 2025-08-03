@@ -408,7 +408,7 @@ async def process_audio_data(room_id: str, user_id: str, audio_data: bytes, webs
             # In mirror mode, directly send the audio back to the same client
             # Convert to WAV format to make it easier for browsers to play
             if audio_processor.attatch_wav_header:
-                sample_rate = 16000
+                sample_rate = 44100
                 channels = 1
                 bits = 16
 
