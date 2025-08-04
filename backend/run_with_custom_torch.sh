@@ -8,8 +8,10 @@ export PYTORCH_HIP_ALLOC_CONF=max_split_size_mb:128
 export AMD_SERIALIZE_KERNEL=1
 export TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1
 export HIP_VISIBLE_DEVICES=0
-export WHISPER_MODEL=medium
+export WHISPER_MODEL=tiny
 export FLASH_ATTENTION_TRITON_AMD_ENABLE=TRUE
+export TORCH_USE_HIP_DSA=1
+export HIP_LAUNCH_BLOCKING=1
 
 # Set the library path to find ROCm libraries
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/rocm/lib
