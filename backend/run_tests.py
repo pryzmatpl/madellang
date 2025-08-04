@@ -168,7 +168,7 @@ class TestRunner:
             start_time = time.time()
             for _ in range(10):
                 # Simulate audio processing operations
-                processed = np.frombuffer(audio_data.tobytes(), dtype=np.float32)
+                processed = np.frombuffer(audio_data.tobytes(), dtype=np.float32).copy()
                 _ = processed.mean()
             end_time = time.time()
             

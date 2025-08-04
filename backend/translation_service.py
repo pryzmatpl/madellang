@@ -107,7 +107,11 @@ class TranslationService:
         try:
             # Make sure audio data is writable and in the right format
             if hasattr(audio_data, 'flags'):
-                audio_data.flags.writeable = True
+                try:
+                    audio_data.flags.writeable = True
+                except ValueError:
+                    # If the array is read-only, create a writable copy
+                    audio_data = audio_data.copy()
             audio_data = np.asarray(audio_data, dtype=np.float32)
             
             # Check for invalid audio data

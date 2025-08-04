@@ -123,8 +123,8 @@ class AudioProcessor:
             # Add to buffer and get complete buffer
             complete_buffer = self._add_to_buffer(room_id, user_id, data)
             
-            # Convert audio bytes to numpy array
-            audio_np = np.frombuffer(complete_buffer, dtype=np.float32)
+            # Convert audio bytes to numpy array - create a writable copy
+            audio_np = np.frombuffer(complete_buffer, dtype=np.float32).copy()
             
             # Process only if we have enough audio data (at least 0.5 seconds)
             if len(audio_np) < 41000:  # Assuming 1s of 44,1 khz sample rate
