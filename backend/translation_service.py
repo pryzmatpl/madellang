@@ -8,7 +8,7 @@ import whisper
 from torch_loader import get_device_info
 import torch
 import numpy as np
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import time
 
 logger = logging.getLogger(__name__)

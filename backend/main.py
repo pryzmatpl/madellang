@@ -401,7 +401,30 @@ async def system_info():
     # Add selected model info
     info["whisper_model"] = select_appropriate_whisper_model()
     
+    # Add model manager info
+    info["use_local_models"] = model_manager.use_local_models
+    info["available_language_pairs"] = model_manager.get_available_language_pairs() if model_manager.use_local_models else []
+    info["available_languages"] = model_manager.get_available_languages() if model_manager.use_local_models else []
+    info["whisper_device"] = translation_service.device
+    
     return info
+
+@app.get("/debug/models")
+async def debug_models():
+    """Debug endpoint to check model availability"""
+    try:
+        return {
+            "use_local_models": model_manager.use_local_models,
+            "available_language_pairs": model_manager.get_available_language_pairs(),
+            "available_languages": model_manager.get_available_languages(),
+            "whisper_device": translation_service.device,
+            "can_translate_en_de": model_manager.can_translate("en", "de"),
+            "can_translate_de_en": model_manager.can_translate("de", "en"),
+            "model_manager_type": type(model_manager).__name__,
+            "translation_service_type": type(translation_service).__name__
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.get("/toggle-mirror-mode")
 async def toggle_mirror_mode(enabled: bool = False):
