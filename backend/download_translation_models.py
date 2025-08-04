@@ -62,16 +62,10 @@ def main():
         ("Helsinki-NLP/opus-mt-fr-en", "fr-en"),      # French to English
         ("Helsinki-NLP/opus-mt-en-it", "en-it"),      # English to Italian
         ("Helsinki-NLP/opus-mt-it-en", "it-en"),      # Italian to English
-        ("Helsinki-NLP/opus-mt-en-pt", "en-pt"),      # English to Portuguese
-        ("Helsinki-NLP/opus-mt-pt-en", "pt-en"),      # Portuguese to English
         ("Helsinki-NLP/opus-mt-en-ru", "en-ru"),      # English to Russian
         ("Helsinki-NLP/opus-mt-ru-en", "ru-en"),      # Russian to English
         ("Helsinki-NLP/opus-mt-en-zh", "en-zh"),      # English to Chinese
         ("Helsinki-NLP/opus-mt-zh-en", "zh-en"),      # Chinese to English
-        ("Helsinki-NLP/opus-mt-en-ja", "en-ja"),      # English to Japanese
-        ("Helsinki-NLP/opus-mt-ja-en", "ja-en"),      # Japanese to English
-        ("Helsinki-NLP/opus-mt-en-ko", "en-ko"),      # English to Korean
-        ("Helsinki-NLP/opus-mt-ko-en", "ko-en"),      # Korean to English
     ]
     
     print("Starting download of translation models...")
