@@ -120,8 +120,9 @@ class TranslationService:
                 
                 # Move model to the target device if needed
                 if device != self.device:
-                    logger.info(f"Moving model to {device}")
-                    self.model = self.model.to(device)
+                    if not self.switch_to_device(device):
+                        logger.error(f"Failed to switch to {device}, skipping")
+                        continue
                 
                 # Validate language codes first
                 if source_lang and source_lang not in self.supported_languages:
