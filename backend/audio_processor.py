@@ -88,7 +88,7 @@ class AudioProcessor:
             print(f"Error in audio processing: {e}")
             return b""
 
-    def to_wav(self, audio_chunk: bytes, sample_rate: int=16000, num_channels: int = 1, sample_width: int = 2):
+    def to_wav(self, audio_chunk: bytes, sample_rate: int=44100, num_channels: int = 1, sample_width: int = 2):
         # Create a BytesIO object to hold the WAV data
         wav_io = io.BytesIO()
 
@@ -134,10 +134,34 @@ class AudioProcessor:
             # Only return results if we have text
             if result and result.get("translated_text") and len(result["translated_text"]) > 0:
                 logger.info(f"Translation result: {result['translated_text'][:50]}...")
+
+                # Run speech to text:
+                try:
+                    # Assuming self.tts_service is a text-to-speech service
+                    # Convert the translated text to an audio byte array (WAV format)
+                    translated_audio = self.tts_service.text_to_speech(
+                        result["translated_text"],
+                        lang=target_lang
+                    )
+
+                    # Ensure translated_audio is in bytes format
+                    if isinstance(translated_audio, np.ndarray):
+                        translated_audio = translated_audio.tobytes()
+                    elif not isinstance(translated_audio, bytes):
+                        translated_audio = self.to_wav(translated_audio)
+
+                    # Send the translated audio back through WebSocket
+                    await websocket.send_bytes(translated_audio)
+
+                except Exception as tts_error:
+                    logger.error(f"Error in text-to-speech conversion: {tts_error}")
+                    return None
                 
                 # Clear buffer after successful processing
                 self._clear_buffer(room_id, user_id)
-                
+
+                await websocket.send_bytes(audio_np)
+
                 # Return the result for WebSocket transmission
                 return {
                     "type": "translation_result",
