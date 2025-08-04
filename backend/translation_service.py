@@ -26,6 +26,9 @@ class TranslationService:
             self.device = "cpu"
             logger.info("Using CPU for inference")
         
+        # Store the initial device for fallback
+        self.initial_device = self.device
+        
         # Select appropriate model size
         model_name = select_appropriate_whisper_model()
         logger.info(f"Loading Whisper model '{model_name}' for translation on {self.device}")
@@ -46,12 +49,23 @@ class TranslationService:
             # We'll handle language detection properly when needed
             
         except Exception as e:
-            logger.error(f"Error loading {model_name} model: {e}")
-            # Try fallback to tiny model on CPU if GPU loading failed
-            if self.device == "cuda" and model_name != "tiny":
-                logger.info("Attempting fallback to tiny model on CPU")
+            logger.error(f"Error loading {model_name} model on {self.device}: {e}")
+            # Try fallback to CPU if GPU loading failed
+            if self.device == "cuda":
+                logger.info("Attempting fallback to CPU")
                 self.device = "cpu"
-                self.model = whisper.load_model("tiny", device="cpu")
+                try:
+                    self.model = whisper.load_model(model_name, device="cpu")
+                    logger.info(f"Successfully loaded {model_name} model on CPU")
+                except Exception as cpu_e:
+                    logger.error(f"Error loading model on CPU: {cpu_e}")
+                    # Try tiny model as last resort
+                    if model_name != "tiny":
+                        logger.info("Attempting fallback to tiny model on CPU")
+                        self.model = whisper.load_model("tiny", device="cpu")
+                        logger.info("Successfully loaded tiny model on CPU")
+                    else:
+                        raise cpu_e
             else:
                 # Re-raise if we're already trying the smallest model
                 raise
@@ -63,6 +77,20 @@ class TranslationService:
             logger.info(f"Loaded {len(self.supported_languages)} supported languages")
         except Exception as e:
             logger.error(f"Error loading language list: {e}")
+    
+    def switch_to_device(self, device: str):
+        """Switch the model to a different device"""
+        if device != self.device:
+            logger.info(f"Switching model from {self.device} to {device}")
+            try:
+                self.model = self.model.to(device)
+                self.device = device
+                logger.info(f"Successfully switched to {device}")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to switch to {device}: {e}")
+                return False
+        return True
         
     def transcribe_and_translate(self, audio_data, source_lang: Optional[str] = None, target_lang: str = "en") -> Dict:
         """
