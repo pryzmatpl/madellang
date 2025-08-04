@@ -18,12 +18,18 @@ class TranslationService:
         # Set up GPU environment with AMD-specific configurations
         gpu_available = safe_gpu_setup()
         
-        # Determine device based on GPU compatibility check
-        if gpu_available:
+        # For AMD GPUs, start with CPU to avoid HIP compatibility issues
+        if gpu_available and hasattr(torch.version, 'hip'):
+            logger.info("AMD GPU detected, starting with CPU to avoid HIP compatibility issues")
+            self.device = "cpu"
+            self.gpu_available = False  # We'll keep GPU as fallback but start with CPU
+        elif gpu_available:
             self.device = "cuda"
+            self.gpu_available = True
             logger.info(f"Using GPU: {torch.cuda.get_device_name(0)}")
         else:
             self.device = "cpu"
+            self.gpu_available = False
             logger.info("Using CPU for inference")
         
         # Store the initial device for fallback
@@ -35,18 +41,9 @@ class TranslationService:
         
         # Attempt to load the model with error handling
         try:
-            # For AMD GPUs, we need to make sure we load the model with proper settings
-            if self.device == "cuda" and hasattr(torch.version, 'hip'):
-                # Use smaller model if we're on AMD GPU for better stability
-                logger.info("Loading model with AMD-specific optimizations")
-                self.model = whisper.load_model(model_name, device=self.device)
-            else:
-                self.model = whisper.load_model(model_name, device=self.device)
-            
-            logger.info(f"Successfully loaded {model_name} model")
-            
-            # Skip the warmup step for now since it's causing issues
-            # We'll handle language detection properly when needed
+            # Load model on the initial device
+            self.model = whisper.load_model(model_name, device=self.device)
+            logger.info(f"Successfully loaded {model_name} model on {self.device}")
             
         except Exception as e:
             logger.error(f"Error loading {model_name} model on {self.device}: {e}")
@@ -141,7 +138,13 @@ class TranslationService:
         
         # Try GPU first, then fallback to CPU if needed
         devices_to_try = [self.device]
-        if self.device == "cuda":
+        # Only try GPU if we're not on AMD or if we explicitly want to try it
+        if self.device == "cpu" and self.gpu_available and not hasattr(torch.version, 'hip'):
+            devices_to_try.append("cuda")
+        elif self.device == "cuda" and hasattr(torch.version, 'hip'):
+            # For AMD GPUs, don't try GPU again if we're already on CPU
+            pass
+        elif self.device == "cuda":
             devices_to_try.append("cpu")
         
         for device in devices_to_try:
