@@ -439,7 +439,8 @@ async def process_audio_data(room_id: str, user_id: str, audio_data: bytes, webs
             room_id=room_id,
             user_id=user_id,
             audio_chunk=wav_data,
-            target_lang=target_lang
+            target_lang=target_lang,
+            websocket=websocket
         )
 
         if result:
