@@ -12,7 +12,7 @@ export WHISPER_MODEL=tiny
 export FLASH_ATTENTION_TRITON_AMD_ENABLE=TRUE
 export TORCH_USE_HIP_DSA=1
 export HIP_LAUNCH_BLOCKING=1
-export USE_LOCAL_MODELS=1
+export USE_LOCAL_MODELS="true"
 # Set the library path to find ROCm libraries
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/rocm/lib
 

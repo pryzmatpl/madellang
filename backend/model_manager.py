@@ -29,7 +29,9 @@ class ModelManager:
         """Initialize local AI models"""
         try:
             # Speech-to-Text (Whisper)
+            print("Loading Whisper model...")
             self.stt_model = whisper.load_model("medium")
+            print("Whisper model loaded successfully")
             
             # Translation (MarianMT from HuggingFace)
             self.translation_models = {}
@@ -38,24 +40,40 @@ class ModelManager:
             # Load available translation models from deps directory
             models_dir = Path("./deps/models")
             if models_dir.exists():
+                print(f"Found models directory: {models_dir}")
                 for model_dir in models_dir.glob("*-*"):
                     if model_dir.is_dir():
                         lang_pair = model_dir.name
                         try:
                             print(f"Loading translation model: {lang_pair}")
-                            self.translation_models[lang_pair] = AutoModelForSeq2SeqLM.from_pretrained(
-                                str(model_dir)
-                            ).to(self._get_device())
-                            self.translation_tokenizers[lang_pair] = AutoTokenizer.from_pretrained(
-                                str(model_dir)
-                            )
+                            device = self._get_device()
+                            print(f"Using device: {device}")
+                            
+                            # Load model and tokenizer
+                            model = AutoModelForSeq2SeqLM.from_pretrained(str(model_dir))
+                            tokenizer = AutoTokenizer.from_pretrained(str(model_dir))
+                            
+                            # Move model to device
+                            model = model.to(device)
+                            
+                            self.translation_models[lang_pair] = model
+                            self.translation_tokenizers[lang_pair] = tokenizer
+                            print(f"Successfully loaded {lang_pair} model on {device}")
+                            
                         except Exception as e:
                             print(f"Error loading translation model {lang_pair}: {e}")
+                            continue
+                
+                print(f"Loaded {len(self.translation_models)} translation models")
+                print(f"Available language pairs: {list(self.translation_models.keys())}")
+            else:
+                print(f"Models directory not found: {models_dir}")
             
             # Text-to-Speech (e.g., Coqui TTS)
             try:
                 from TTS.api import TTS
                 self.tts_model = TTS("tts_models/en/vctk/vits", gpu=torch.cuda.is_available())
+                print("TTS model loaded successfully")
             except Exception as e:
                 print(f"Error loading TTS model: {e}")
                 self.tts_model = None
