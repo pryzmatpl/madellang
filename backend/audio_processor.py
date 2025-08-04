@@ -114,7 +114,7 @@ class AudioProcessor:
         """Process incoming audio chunk and return translation result"""
         try:
             # Check if WebSocket is still open before processing
-            if websocket.closed:
+            if not websocket:
                 logger.warning(f"WebSocket is closed for user {user_id}, skipping audio processing")
                 return None
                 
@@ -138,7 +138,7 @@ class AudioProcessor:
             )
             
             # If mirror mode is enabled, send back the original audio
-            if self.mirror_mode and not websocket.closed:
+            if self.mirror_mode and websocket:
                 try:
                     wav_data = self.to_wav(audio_chunk)
                     logger.info(f"Mirroring audio back to sender: {len(audio_chunk)} bytes")
@@ -172,7 +172,7 @@ class AudioProcessor:
                         translated_audio = self.to_wav(translated_audio)
 
                     # Send the translated audio back through WebSocket only if still open
-                    if not websocket.closed:
+                    if websocket:
                         await websocket.send_bytes(translated_audio)
                     else:
                         logger.warning(f"WebSocket closed for user {user_id}, skipping translated audio send")

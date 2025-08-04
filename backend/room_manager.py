@@ -111,7 +111,7 @@ class RoomManager:
             return
             
         for websocket in self.rooms[room_id]:
-            if websocket != exclude_websocket and not websocket.closed:
+            if websocket != exclude_websocket and websocket:
                 try:
                     await websocket.send_json(message)
                 except Exception as e:
@@ -123,7 +123,7 @@ class RoomManager:
             return
             
         for websocket in self.rooms[room_id]:
-            if websocket != exclude_websocket and not websocket.closed:
+            if websocket != exclude_websocket and websocket:
                 try:
                     await websocket.send_bytes(data)
                 except Exception as e:
@@ -149,7 +149,7 @@ class RoomManager:
             return
         
         for websocket in self.rooms[room_id]:
-            if websocket != source_websocket and not websocket.closed:  # Don't send back to sender
+            if websocket != source_websocket and websocket:  # Don't send back to sender
                 try:
                     await websocket.send_bytes(audio_data)
                 except Exception as e:
