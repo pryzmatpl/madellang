@@ -113,21 +113,15 @@ class AudioProcessor:
                                  audio_chunk: bytes, target_lang: str, websocket) -> Optional[Dict]:
         """Process incoming audio chunk and return translation result"""
         try:
-            # If mirror mode is enabled, simply echo the audio back
-            data = None
-            if self.mirror_mode:
-                data = self.to_wav(audio_chunk)
-                logger.info(f"Mirroring audio back to sender: {len(audio_chunk)} bytes")
-
-            # Regular processing for translation mode
             # Add to buffer and get complete buffer
-            complete_buffer = self._add_to_buffer(room_id, user_id, data)
+            complete_buffer = self._add_to_buffer(room_id, user_id, audio_chunk)
             
             # Convert audio bytes to numpy array - create a writable copy
-            audio_np = np.frombuffer(complete_buffer, dtype=np.float32).copy()
+            # audio_chunk is raw PCM data (int16), so convert to float32 properly
+            audio_np = np.frombuffer(complete_buffer, dtype=np.int16).astype(np.float32) / 32767.0
             
             # Process only if we have enough audio data (at least 0.5 seconds)
-            if len(audio_np) < 41000:  # Assuming 1s of 44,1 khz sample rate
+            if len(audio_np) < 22050:  # Assuming 0.5s of 44.1kHz sample rate
                 return None
                 
             # Perform speech recognition and translation
@@ -137,6 +131,12 @@ class AudioProcessor:
             result = self.translation_service.transcribe_and_translate(
                 audio_np, target_lang=target_lang
             )
+            
+            # If mirror mode is enabled, send back the original audio
+            if self.mirror_mode:
+                wav_data = self.to_wav(audio_chunk)
+                logger.info(f"Mirroring audio back to sender: {len(audio_chunk)} bytes")
+                await websocket.send_bytes(wav_data)
             
             # Only return results if we have text
             if result and result.get("translated_text") and len(result["translated_text"]) > 0:
@@ -173,8 +173,6 @@ class AudioProcessor:
                 # Clear buffer after successful processing
                 self._clear_buffer(room_id, user_id)
 
-                await websocket.send_bytes(audio_np)
-
                 # Return the result for WebSocket transmission
                 return {
                     "type": "translation_result",
@@ -201,7 +199,8 @@ class AudioProcessor:
         self.audio_buffers[buffer_key].extend(audio_chunk)
         
         # Limit buffer size (keep last 5 seconds)
-        max_buffer_size = 44100 * 4 * 5  # 5 seconds at 41kHz, 4 bytes per float32
+        # audio_chunk is int16 PCM data, so 2 bytes per sample
+        max_buffer_size = 44100 * 2 * 5  # 5 seconds at 44.1kHz, 2 bytes per int16 sample
         if len(self.audio_buffers[buffer_key]) > max_buffer_size:
             self.audio_buffers[buffer_key] = self.audio_buffers[buffer_key][-max_buffer_size:]
             
