@@ -83,21 +83,29 @@ async def websocket_test(websocket: WebSocket):
     logger.info("Test WebSocket connection accepted")
     
     try:
-        await websocket.send_text("Hello from server - connection established")
+        if not websocket.closed:
+            await websocket.send_text("Hello from server - connection established")
         
         # Use a separate receive task to handle disconnections properly
         while True:
             try:
+                # Check if WebSocket is still open before receiving
+                if websocket.closed:
+                    logger.info("Test WebSocket connection closed")
+                    break
+                    
                 # Create a task for receiving data
                 receive_task = asyncio.create_task(websocket.receive_text())
                 
                 # Wait for message with timeout
                 try:
                     data = await asyncio.wait_for(receive_task, timeout=5.0)
-                    await websocket.send_text(f"Echo: {data}")
+                    if not websocket.closed:
+                        await websocket.send_text(f"Echo: {data}")
                 except asyncio.TimeoutError:
                     # Send ping on timeout
-                    await websocket.send_text("ping")
+                    if not websocket.closed:
+                        await websocket.send_text("ping")
                     continue
                     
             except WebSocketDisconnect:
@@ -118,6 +126,11 @@ async def websocket_test(websocket: WebSocket):
 async def handle_audio_messages(websocket: WebSocket, room_id: str, user_id: str, target_lang: str):
     while True:
         try:
+            # Check if WebSocket is still open before receiving
+            if websocket.closed:
+                logger.warning(f"WebSocket is closed for user {user_id}, stopping audio handling")
+                break
+                
             audio_data = await websocket.receive_bytes()
             result = await audio_processor.process_audio_chunk(
                 room_id=room_id,
@@ -126,7 +139,7 @@ async def handle_audio_messages(websocket: WebSocket, room_id: str, user_id: str
                 target_lang=target_lang
             )
             
-            if result:
+            if result and not websocket.closed:
                 if "audio" in result:
                     await websocket.send_bytes(result["audio"])
                 else:
@@ -189,12 +202,16 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
     try:
         # Send welcome message FIRST, before adding to room
         try:
-            await websocket.send_json({
-                "type": "connection_established",
-                "room_id": room_id,
-                "user_id": user_id
-            })
-            logger.debug(f"Sent connection_established message to {user_id}")
+            if not websocket.closed:
+                await websocket.send_json({
+                    "type": "connection_established",
+                    "room_id": room_id,
+                    "user_id": user_id
+                })
+                logger.debug(f"Sent connection_established message to {user_id}")
+            else:
+                logger.warning("WebSocket closed before sending welcome message")
+                disconnected = True
         except Exception as e:
             logger.warning(f"Failed to send welcome message: {str(e)}")
             disconnected = True
@@ -209,6 +226,12 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
             # Message handling loop with additional disconnect check
             while not disconnected:
                 try:
+                    # Check if WebSocket is still open before receiving
+                    if websocket.closed:
+                        logger.info(f"WebSocket closed for user {user_id}")
+                        disconnected = True
+                        break
+                        
                     # Use wait_for with a shorter timeout
                     receive_task = asyncio.create_task(websocket.receive())
                     done, pending = await asyncio.wait(
@@ -234,7 +257,8 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                                 
                                 if msg_type == "ping":
                                     logger.debug(f"Received ping from {user_id}, sending pong")
-                                    await websocket.send_json({"type": "pong"})
+                                    if not websocket.closed:
+                                        await websocket.send_json({"type": "pong"})
                                 elif msg_type == "close":
                                     logger.info(f"Client {user_id} requested closure")
                                     disconnected = True
@@ -404,6 +428,11 @@ async def test_websocket():
 async def process_audio_data(room_id: str, user_id: str, audio_data: bytes, websocket: WebSocket, target_lang: str):
     """Process audio data and broadcast results to room participants"""
     try:
+        # Check if WebSocket is still open before processing
+        if websocket.closed:
+            logger.warning(f"WebSocket is closed for user {user_id}, skipping audio processing")
+            return
+            
         wav_data = audio_data
         if audio_processor.attatch_wav_header:
             sample_rate = 44100
@@ -443,7 +472,7 @@ async def process_audio_data(room_id: str, user_id: str, audio_data: bytes, webs
             websocket=websocket
         )
 
-        if result:
+        if result and not websocket.closed:
             if isinstance(result, dict) and "audio" in result:
                 await websocket.send_bytes(result["audio"])
             elif isinstance(result, dict):

@@ -295,31 +295,12 @@ class TranslationService:
             prompt = f"Translate the following text to {language_name}: {text}"
             logger.info(f"Using translation prompt to {language_name}")
             
-            # Use proper audio format that the model expects - create a dummy spectrogram
-            # Instead of creating a raw audio tensor, we'll use the log mel spectrogram format
-            # that Whisper expects
+            # For now, return the original text since Whisper doesn't support
+            # direct text-to-text translation without audio input
+            # This is a limitation of the current Whisper implementation
+            logger.warning("Direct text translation not supported by Whisper. Returning original text.")
+            return text
             
-            # Create a properly formatted options object
-            options = whisper.DecodingOptions(
-                prompt=prompt,
-                language=target_lang,
-                without_timestamps=True,
-            )
-            
-            # For prompt-based approaches, we'll use the model's encode/decode functions directly
-            # Use a different approach that doesn't rely on dummy audio
-            encodings = self.model.tokenizer.encode(prompt)
-            prompt_ids = torch.tensor([encodings.ids]).to(self.device)
-            
-            # Generate a translation using the prompt
-            result = self.model.decode(prompt_ids, options)
-            translation = result.text
-            
-            # Clean up the translation - remove the prompt if it appears
-            if prompt in translation:
-                translation = translation.replace(prompt, "").strip()
-                
-            return translation
         except Exception as e:
             logger.error(f"Error in prompt translation: {e}")
             return text  # Fallback to original text

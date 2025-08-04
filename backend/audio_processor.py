@@ -113,6 +113,11 @@ class AudioProcessor:
                                  audio_chunk: bytes, target_lang: str, websocket) -> Optional[Dict]:
         """Process incoming audio chunk and return translation result"""
         try:
+            # Check if WebSocket is still open before processing
+            if websocket.closed:
+                logger.warning(f"WebSocket is closed for user {user_id}, skipping audio processing")
+                return None
+                
             # Add to buffer and get complete buffer
             complete_buffer = self._add_to_buffer(room_id, user_id, audio_chunk)
             
@@ -133,10 +138,13 @@ class AudioProcessor:
             )
             
             # If mirror mode is enabled, send back the original audio
-            if self.mirror_mode:
-                wav_data = self.to_wav(audio_chunk)
-                logger.info(f"Mirroring audio back to sender: {len(audio_chunk)} bytes")
-                await websocket.send_bytes(wav_data)
+            if self.mirror_mode and not websocket.closed:
+                try:
+                    wav_data = self.to_wav(audio_chunk)
+                    logger.info(f"Mirroring audio back to sender: {len(audio_chunk)} bytes")
+                    await websocket.send_bytes(wav_data)
+                except Exception as mirror_error:
+                    logger.error(f"Error mirroring audio: {mirror_error}")
             
             # Only process TTS and return results if we have translated text
             if result and result.get("translated_text") and len(result["translated_text"]) > 0:
@@ -163,8 +171,11 @@ class AudioProcessor:
                     elif not isinstance(translated_audio, bytes):
                         translated_audio = self.to_wav(translated_audio)
 
-                    # Send the translated audio back through WebSocket
-                    await websocket.send_bytes(translated_audio)
+                    # Send the translated audio back through WebSocket only if still open
+                    if not websocket.closed:
+                        await websocket.send_bytes(translated_audio)
+                    else:
+                        logger.warning(f"WebSocket closed for user {user_id}, skipping translated audio send")
 
                 except Exception as tts_error:
                     logger.error(f"Error in text-to-speech conversion: {tts_error}")
