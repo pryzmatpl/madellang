@@ -403,57 +403,48 @@ async def test_websocket():
 async def process_audio_data(room_id: str, user_id: str, audio_data: bytes, websocket: WebSocket, target_lang: str):
     """Process audio data and broadcast results to room participants"""
     try:
-        if audio_processor.mirror_mode:
-            logger.info(f"Mirror mode active: echoing {len(audio_data)} bytes back to sender")
-            # In mirror mode, directly send the audio back to the same client
-            # Convert to WAV format to make it easier for browsers to play
-            if audio_processor.attatch_wav_header:
-                sample_rate = 44100
-                channels = 1
-                bits = 16
+        if audio_processor.attatch_wav_header:
+            sample_rate = 44100
+            channels = 1
+            bits = 16
 
-                # Create WAV header
-                header = bytearray()
-                # RIFF header
-                header.extend(b'RIFF')
-                header.extend((36 + len(audio_data)).to_bytes(4, 'little'))  # File size
-                header.extend(b'WAVE')
-                # fmt chunk
-                header.extend(b'fmt ')
-                header.extend((16).to_bytes(4, 'little'))  # Chunk size
-                header.extend((1).to_bytes(2, 'little'))   # Format code (PCM)
-                header.extend((channels).to_bytes(2, 'little'))  # Channels
-                header.extend((sample_rate).to_bytes(4, 'little'))  # Sample rate
-                byte_rate = sample_rate * channels * bits // 8
-                header.extend((byte_rate).to_bytes(4, 'little'))  # Byte rate
-                block_align = channels * bits // 8
-                header.extend((block_align).to_bytes(2, 'little'))  # Block align
-                header.extend((bits).to_bytes(2, 'little'))  # Bits per sample
-                # data chunk
-                header.extend(b'data')
-                header.extend((len(audio_data)).to_bytes(4, 'little'))  # Data size
+            # Create WAV header
+            header = bytearray()
+            # RIFF header
+            header.extend(b'RIFF')
+            header.extend((36 + len(audio_data)).to_bytes(4, 'little'))  # File size
+            header.extend(b'WAVE')
+            # fmt chunk
+            header.extend(b'fmt ')
+            header.extend((16).to_bytes(4, 'little'))  # Chunk size
+            header.extend((1).to_bytes(2, 'little'))   # Format code (PCM)
+            header.extend((channels).to_bytes(2, 'little'))  # Channels
+            header.extend((sample_rate).to_bytes(4, 'little'))  # Sample rate
+            byte_rate = sample_rate * channels * bits // 8
+            header.extend((byte_rate).to_bytes(4, 'little'))  # Byte rate
+            block_align = channels * bits // 8
+            header.extend((block_align).to_bytes(2, 'little'))  # Block align
+            header.extend((bits).to_bytes(2, 'little'))  # Bits per sample
+            # data chunk
+            header.extend(b'data')
+            header.extend((len(audio_data)).to_bytes(4, 'little'))  # Data size
 
-                # Combine header and audio data
-                wav_data = header + audio_data
-                await websocket.send_bytes(wav_data)
-                # Send formatted WAV
-            else:
-                await websocket.send_bytes(audio_data)
-            return
+            # Combine header and audio data
+            wav_data = header + audio_data
 
-        # Normal translation mode logic
+            # Normal translation mode logic
         result = await audio_processor.process_audio_chunk(
             room_id=room_id,
             user_id=user_id,
             audio_chunk=audio_data,
             target_lang=target_lang
         )
-        
+
         if result:
             if isinstance(result, dict) and "audio" in result:
                 await websocket.send_bytes(result["audio"])
             elif isinstance(result, dict):
                 await room_manager.broadcast_translation(room_id, websocket, result)
-                
+
     except Exception as e:
         logger.error(f"Error processing audio: {str(e)}")
