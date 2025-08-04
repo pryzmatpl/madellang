@@ -8,6 +8,7 @@ from pathlib import Path
 # Add the deps directory to the Python path and use custom PyTorch
 sys.path.insert(0, "./deps")
 from torch_loader import get_device_info
+from whisper_loader import get_whisper_info
 import torch
 
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, MarianMTModel, MarianTokenizer
