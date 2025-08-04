@@ -129,12 +129,20 @@ class ModelManager:
     def translate_text(self, text: str, source_lang: str, target_lang: str) -> str:
         """Translate text to the target language"""
         if self.use_local_models:
+            # Normalize language codes to match model directory names
+            source_lang = source_lang.lower()
+            target_lang = target_lang.lower()
+            
             # Construct language pair key
             lang_pair = f"{source_lang}-{target_lang}"
             reverse_lang_pair = f"{target_lang}-{source_lang}"
             
+            print(f"Attempting translation from {source_lang} to {target_lang}")
+            print(f"Available models: {list(self.translation_models.keys())}")
+            
             # Check if we have the model for this language pair
             if lang_pair in self.translation_models:
+                print(f"Using direct model: {lang_pair}")
                 model = self.translation_models[lang_pair]
                 tokenizer = self.translation_tokenizers[lang_pair]
             elif reverse_lang_pair in self.translation_models:
@@ -144,16 +152,33 @@ class ModelManager:
                 tokenizer = self.translation_tokenizers[reverse_lang_pair]
             else:
                 print(f"No translation model found for {source_lang} to {target_lang}")
+                print(f"Available pairs: {list(self.translation_models.keys())}")
                 return text
                 
             # Process translation
             try:
                 device = self._get_device()
-                inputs = tokenizer(text, return_tensors="pt").to(device)
+                print(f"Translating on device: {device}")
+                
+                # Tokenize input
+                inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
+                inputs = {k: v.to(device) for k, v in inputs.items()}
+                
+                # Generate translation
                 with torch.no_grad():
-                    outputs = model.generate(**inputs, max_length=512)
+                    outputs = model.generate(
+                        **inputs, 
+                        max_length=512,
+                        num_beams=4,
+                        early_stopping=True,
+                        no_repeat_ngram_size=2
+                    )
+                
+                # Decode output
                 translated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+                print(f"Translation completed: '{text[:50]}...' -> '{translated_text[:50]}...'")
                 return translated_text
+                
             except Exception as e:
                 print(f"Translation error: {e}")
                 return text
