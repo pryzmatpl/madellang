@@ -405,6 +405,7 @@ async def test_websocket():
 async def process_audio_data(room_id: str, user_id: str, audio_data: bytes, websocket: WebSocket, target_lang: str):
     """Process audio data and broadcast results to room participants"""
     try:
+        wav_data = audio_data
         if audio_processor.attatch_wav_header:
             sample_rate = 44100
             channels = 1
@@ -438,7 +439,7 @@ async def process_audio_data(room_id: str, user_id: str, audio_data: bytes, webs
         result = await audio_processor.process_audio_chunk(
             room_id=room_id,
             user_id=user_id,
-            audio_chunk=audio_data,
+            audio_chunk=wav_data,
             target_lang=target_lang
         )
 
