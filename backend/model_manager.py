@@ -2,8 +2,14 @@ import os
 import numpy as np
 from typing import Optional, Dict, List, Any
 import io
-import torch
+import sys
 from pathlib import Path
+
+# Add the deps directory to the Python path and use custom PyTorch
+sys.path.insert(0, "./deps")
+from torch_loader import get_device_info
+import torch
+
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, MarianMTModel, MarianTokenizer
 import whisper
 
