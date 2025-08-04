@@ -1,3 +1,7 @@
+import sys
+# Add the deps directory to the Python path
+sys.path.insert(0, "./deps")
+
 import whisper
 import torch
 from typing import Dict, List, Optional

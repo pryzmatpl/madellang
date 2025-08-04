@@ -233,4 +233,5 @@ class TTSService:
     
     def is_available(self) -> bool:
         """Check if TTS service is available"""
-        return self.tts_model is not None or self.elevenlabs_api_key is not None 
+        # Always available since we have gTTS fallback
+        return True 
