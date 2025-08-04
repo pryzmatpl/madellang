@@ -102,8 +102,11 @@ class TTSService:
         try:
             if self.use_local_models and self.tts_model is not None:
                 return self._local_tts(text, lang)
-            else:
+            elif self.elevenlabs_api_key:
                 return self._api_tts(text, lang)
+            else:
+                # Use gTTS as primary method when no local models or API key
+                return self._gtts_fallback(text, lang)
                 
         except Exception as e:
             logger.error(f"TTS error: {e}")
