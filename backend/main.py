@@ -70,6 +70,17 @@ tts_service = TTSService(use_local_models=True)
 audio_processor = AudioProcessor(model_manager, translation_service, tts_service)
 room_manager = RoomManager(audio_processor)  # Pass audio_processor to RoomManager
 
+# Log available models and capabilities
+logger.info("=== Model Manager Initialization ===")
+logger.info(f"Using local models: {model_manager.use_local_models}")
+if model_manager.use_local_models:
+    logger.info(f"Available language pairs: {model_manager.get_available_language_pairs()}")
+    logger.info(f"Available languages: {model_manager.get_available_languages()}")
+logger.info("=== Translation Service Initialization ===")
+logger.info(f"Whisper model loaded on device: {translation_service.device}")
+logger.info(f"Supported Whisper languages: {len(translation_service.supported_languages)}")
+logger.info("=== Service Initialization Complete ===")
+
 # Define request/response models
 class TextTranslationRequest(BaseModel):
     text: str

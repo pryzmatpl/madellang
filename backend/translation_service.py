@@ -291,4 +291,12 @@ class TranslationService:
             
     def get_available_languages(self) -> Dict[str, str]:
         """Get dictionary of available languages for translation"""
-        return self.supported_languages 
+        return self.supported_languages
+    
+    def get_available_language_pairs(self) -> List[str]:
+        """Get list of available language pairs for translation"""
+        return self.model_manager.get_available_language_pairs()
+    
+    def can_translate(self, source_lang: str, target_lang: str) -> bool:
+        """Check if translation is available for the given language pair"""
+        return self.model_manager.can_translate(source_lang, target_lang) 

@@ -277,3 +277,23 @@ class ModelManager:
         else:
             # Return a standard list for API mode
             return ["en", "es", "fr", "de", "it", "ja", "ko", "zh", "ru", "pt", "ar", "hi"]
+    
+    def get_available_language_pairs(self) -> List[str]:
+        """Get a list of available language pairs for translation"""
+        if self.use_local_models:
+            return list(self.translation_models.keys())
+        else:
+            # Return common pairs for API mode
+            return ["en-de", "en-es", "en-fr", "en-it", "en-ru", "de-en", "es-en", "fr-en", "it-en", "ru-en"]
+    
+    def can_translate(self, source_lang: str, target_lang: str) -> bool:
+        """Check if translation is available for the given language pair"""
+        if self.use_local_models:
+            source_lang = source_lang.lower()
+            target_lang = target_lang.lower()
+            lang_pair = f"{source_lang}-{target_lang}"
+            reverse_lang_pair = f"{target_lang}-{source_lang}"
+            return lang_pair in self.translation_models or reverse_lang_pair in self.translation_models
+        else:
+            # For API mode, assume all common languages are supported
+            return True
