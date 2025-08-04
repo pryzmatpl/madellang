@@ -88,7 +88,7 @@ class AudioProcessor:
             print(f"Error in audio processing: {e}")
             return b""
 
-    def to_wav(audio_chunk: bytes, sample_rate: int=16000, num_channels: int = 1, sample_width: int = 2):
+    def to_wav(self, audio_chunk: bytes, sample_rate: int=16000, num_channels: int = 1, sample_width: int = 2):
         # Create a BytesIO object to hold the WAV data
         wav_io = io.BytesIO()
 
@@ -107,26 +107,20 @@ class AudioProcessor:
         """Process incoming audio chunk and return translation result"""
         try:
             # If mirror mode is enabled, simply echo the audio back
+            data = None
             if self.mirror_mode:
+                data = self.to_wav(audio_chunk)
                 logger.info(f"Mirroring audio back to sender: {len(audio_chunk)} bytes")
-                logger.debug(audio_chunk)
-                # Send the audio directly back to the same websocket that sent it
-                try:
-                    await websocket.send_bytes(self.to_wav(audio_chunk))
-                    return True
-                except Exception as e:
-                    logger.error(f"Error sending mirrored audio: {str(e)}")
-                    return False
-                
+
             # Regular processing for translation mode
             # Add to buffer and get complete buffer
-            complete_buffer = self._add_to_buffer(room_id, user_id, audio_chunk)
+            complete_buffer = self._add_to_buffer(room_id, user_id, data)
             
             # Convert audio bytes to numpy array
             audio_np = np.frombuffer(complete_buffer, dtype=np.float32)
             
             # Process only if we have enough audio data (at least 0.5 seconds)
-            if len(audio_np) < 8000:  # Assuming 16kHz sample rate
+            if len(audio_np) < 41000:  # Assuming 1s of 44,1 khz sample rate
                 return None
                 
             # Perform speech recognition and translation
@@ -170,7 +164,7 @@ class AudioProcessor:
         self.audio_buffers[buffer_key].extend(audio_chunk)
         
         # Limit buffer size (keep last 5 seconds)
-        max_buffer_size = 16000 * 4 * 5  # 5 seconds at 16kHz, 4 bytes per float32
+        max_buffer_size = 44100 * 4 * 5  # 5 seconds at 41kHz, 4 bytes per float32
         if len(self.audio_buffers[buffer_key]) > max_buffer_size:
             self.audio_buffers[buffer_key] = self.audio_buffers[buffer_key][-max_buffer_size:]
             
