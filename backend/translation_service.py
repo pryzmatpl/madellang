@@ -81,81 +81,113 @@ class TranslationService:
         # Determine the task based on target language
         task = "translate" if target_lang == "en" else "transcribe"
         
-        try:
-            # Validate language codes first
-            if source_lang and source_lang not in self.supported_languages:
-                logger.warning(f"Source language {source_lang} not found in supported languages. Using auto-detection instead.")
-                source_lang = None
+        # Try GPU first, then fallback to CPU if needed
+        devices_to_try = [self.device]
+        if self.device == "cuda":
+            devices_to_try.append("cpu")
+        
+        for device in devices_to_try:
+            try:
+                logger.info(f"Attempting transcription on {device}")
                 
-            if target_lang not in self.supported_languages:
-                logger.warning(f"Target language {target_lang} not found in supported languages. Falling back to English.")
-                target_lang = "en"
-            
-            # First transcribe to get original text and detect language
-            transcription_options = {"task": "transcribe"}
-            if source_lang:
-                transcription_options["language"] = source_lang
+                # Move model to the target device if needed
+                if device != self.device:
+                    logger.info(f"Moving model to {device}")
+                    self.model = self.model.to(device)
                 
-            transcription_result = self.model.transcribe(
-                audio_data, 
-                **transcription_options
-            )
-            
-            original_text = transcription_result["text"]
-            detected_lang = transcription_result.get("language", "en")
-            
-            logger.info(f"Detected language: {detected_lang}, original text: {original_text[:50]}...")
-            
-            # If target is the same as source, no translation needed
-            if detected_lang == target_lang:
-                logger.info("Source and target languages match, no translation needed")
-                return {
-                    "original_text": original_text,
-                    "translated_text": original_text,
-                    "detected_language": detected_lang
-                }
-            
-            # For non-English target languages, we need to use a workaround
-            if target_lang != "en":
-                # First translate to English if source isn't English
-                if detected_lang != "en":
-                    english_result = self.model.transcribe(
+                # Validate language codes first
+                if source_lang and source_lang not in self.supported_languages:
+                    logger.warning(f"Source language {source_lang} not found in supported languages. Using auto-detection instead.")
+                    source_lang = None
+                    
+                if target_lang not in self.supported_languages:
+                    logger.warning(f"Target language {target_lang} not found in supported languages. Falling back to English.")
+                    target_lang = "en"
+                
+                # First transcribe to get original text and detect language
+                transcription_options = {"task": "transcribe"}
+                if source_lang:
+                    transcription_options["language"] = source_lang
+                    
+                transcription_result = self.model.transcribe(
+                    audio_data, 
+                    **transcription_options
+                )
+                
+                original_text = transcription_result["text"]
+                detected_lang = transcription_result.get("language", "en")
+                
+                logger.info(f"Detected language: {detected_lang}, original text: {original_text[:50]}...")
+                
+                # If target is the same as source, no translation needed
+                if detected_lang == target_lang:
+                    logger.info("Source and target languages match, no translation needed")
+                    return {
+                        "original_text": original_text,
+                        "translated_text": original_text,
+                        "detected_language": detected_lang
+                    }
+                
+                # For non-English target languages, we need to use a workaround
+                if target_lang != "en":
+                    # First translate to English if source isn't English
+                    if detected_lang != "en":
+                        english_result = self.model.transcribe(
+                            audio_data,
+                            language=detected_lang,
+                            task="translate"
+                        )
+                        english_text = english_result["text"]
+                        logger.info(f"Translated to English: {english_text[:50]}...")
+                    else:
+                        english_text = original_text
+                        
+                    # Now use prompt-based approach to get the model to translate to target language
+                    target_result = self._prompt_translate(english_text, target_lang)
+                    translated_text = target_result
+                else:
+                    # Direct translation to English
+                    translation_result = self.model.transcribe(
                         audio_data,
                         language=detected_lang,
                         task="translate"
                     )
-                    english_text = english_result["text"]
-                    logger.info(f"Translated to English: {english_text[:50]}...")
+                    translated_text = translation_result["text"]
+                    logger.info(f"Translated text: {translated_text[:50]}...")
+                
+                return {
+                    "original_text": original_text,
+                    "translated_text": translated_text,
+                    "detected_language": detected_lang
+                }
+                
+            except Exception as e:
+                error_msg = str(e)
+                logger.error(f"Error in transcribe_and_translate on {device}: {error_msg}")
+                
+                # If this is a HIP error and we haven't tried CPU yet, continue to CPU
+                if "HIP error" in error_msg and device == "cuda" and "cpu" in devices_to_try:
+                    logger.info("HIP error detected, will try CPU fallback")
+                    continue
+                elif device == "cpu":
+                    # If CPU also failed, return error
+                    return {
+                        "original_text": "",
+                        "translated_text": "",
+                        "detected_language": source_lang or "en",
+                        "error": error_msg
+                    }
                 else:
-                    english_text = original_text
-                    
-                # Now use prompt-based approach to get the model to translate to target language
-                target_result = self._prompt_translate(english_text, target_lang)
-                translated_text = target_result
-            else:
-                # Direct translation to English
-                translation_result = self.model.transcribe(
-                    audio_data,
-                    language=detected_lang,
-                    task="translate"
-                )
-                translated_text = translation_result["text"]
-                logger.info(f"Translated text: {translated_text[:50]}...")
-            
-            return {
-                "original_text": original_text,
-                "translated_text": translated_text,
-                "detected_language": detected_lang
-            }
-            
-        except Exception as e:
-            logger.error(f"Error in transcribe_and_translate: {e}")
-            return {
-                "original_text": "",
-                "translated_text": "",
-                "detected_language": source_lang or "en",
-                "error": str(e)
-            }
+                    # For other errors on GPU, try CPU
+                    continue
+        
+        # If we get here, all devices failed
+        return {
+            "original_text": "",
+            "translated_text": "",
+            "detected_language": source_lang or "en",
+            "error": "All device attempts failed"
+        }
     
     def _prompt_translate(self, text: str, target_lang: str) -> str:
         """
