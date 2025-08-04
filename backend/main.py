@@ -17,7 +17,6 @@ sys.path.append("./deps/audio")
 
 import whisper
 import torch
-import torchaudio
 import logging
 import json
 import websockets

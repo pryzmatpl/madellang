@@ -41,10 +41,13 @@ class AudioProcessor:
             # Convert bytes to numpy array for processing
             audio_np = np.frombuffer(audio_data, dtype=np.int16)
             
+            # Convert to float32 for Whisper
+            audio_float = audio_np.astype(np.float32) / 32767.0
+            
             if self.translation_service:
                 # Use Whisper for both STT and translation in one step
                 result = self.translation_service.transcribe_and_translate(
-                    audio_np, 
+                    audio_float, 
                     source_lang=source_lang, 
                     target_lang=target_lang
                 )
