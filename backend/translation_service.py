@@ -2,19 +2,60 @@ import sys
 # Add the deps directory to the Python path
 sys.path.insert(0, "./deps")
 
+import logging
 import whisper
 import torch
 import numpy as np
-from typing import Dict, List, Optional
-from model_selector import select_appropriate_whisper_model
-import logging
-from amd_gpu_utils import safe_gpu_setup
+from typing import Optional, Dict, Any
+import time
 
 logger = logging.getLogger(__name__)
 
+# Import the model manager for text translation
+from model_manager import ModelManager
+
+def safe_gpu_setup():
+    """Safely set up GPU environment with AMD-specific configurations"""
+    try:
+        # Check if CUDA is available
+        if torch.cuda.is_available():
+            # For AMD GPUs, we need to be more careful
+            if hasattr(torch.version, 'hip'):
+                logger.info("AMD GPU detected with HIP support")
+                # AMD GPUs might have compatibility issues with some models
+                return True
+            else:
+                logger.info("NVIDIA GPU detected")
+                return True
+        else:
+            logger.info("No GPU detected, using CPU")
+            return False
+    except Exception as e:
+        logger.error(f"Error in GPU setup: {e}")
+        return False
+
+def select_appropriate_whisper_model():
+    """Select appropriate Whisper model based on available resources"""
+    try:
+        if torch.cuda.is_available():
+            # Check available GPU memory
+            gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3  # GB
+            if gpu_memory >= 8:
+                return "large-v3"
+            elif gpu_memory >= 4:
+                return "medium"
+            else:
+                return "small"
+        else:
+            # For CPU, use smaller models
+            return "tiny"
+    except Exception as e:
+        logger.error(f"Error selecting Whisper model: {e}")
+        return "tiny"
+
 class TranslationService:
     def __init__(self):
-        """Initialize the translation service using Whisper"""
+        """Initialize the translation service using Whisper for STT and ModelManager for translation"""
         # Set up GPU environment with AMD-specific configurations
         gpu_available = safe_gpu_setup()
         
@@ -37,7 +78,7 @@ class TranslationService:
         
         # Select appropriate model size
         model_name = select_appropriate_whisper_model()
-        logger.info(f"Loading Whisper model '{model_name}' for translation on {self.device}")
+        logger.info(f"Loading Whisper model '{model_name}' for transcription on {self.device}")
         
         # Attempt to load the model with error handling
         try:
@@ -74,6 +115,10 @@ class TranslationService:
             logger.info(f"Loaded {len(self.supported_languages)} supported languages")
         except Exception as e:
             logger.error(f"Error loading language list: {e}")
+            
+        # Initialize the model manager for text translation
+        self.model_manager = ModelManager()
+        logger.info("Model manager initialized for text translation")
     
     def switch_to_device(self, device: str):
         """Switch the model to a different device"""
@@ -91,7 +136,7 @@ class TranslationService:
         
     def transcribe_and_translate(self, audio_data, source_lang: Optional[str] = None, target_lang: str = "en") -> Dict:
         """
-        Transcribe audio and translate it to the target language using Whisper
+        Transcribe audio and translate it to the target language using Whisper for STT and ModelManager for translation
         
         Args:
             audio_data: Audio data as numpy array
@@ -112,158 +157,91 @@ class TranslationService:
                 except ValueError:
                     # If the array is read-only, create a writable copy
                     audio_data = audio_data.copy()
-            audio_data = np.asarray(audio_data, dtype=np.float32)
             
-            # Check for invalid audio data
-            if np.isnan(audio_data).any() or np.isinf(audio_data).any():
-                logger.error("Audio data contains NaN or infinite values")
-                return {
-                    "original_text": "",
-                    "translated_text": "",
-                    "detected_language": source_lang or "en",
-                    "error": "Invalid audio data (NaN or infinite values)"
-                }
+            # Normalize audio to float32 if needed
+            if audio_data.dtype != np.float32:
+                audio_data = audio_data.astype(np.float32)
                 
-            # Normalize audio if needed
-            if np.max(np.abs(audio_data)) > 1.0:
-                audio_data = audio_data / np.max(np.abs(audio_data))
+            # Ensure audio is in the expected range [-1, 1]
+            if audio_data.max() > 1.0 or audio_data.min() < -1.0:
+                audio_data = np.clip(audio_data, -1.0, 1.0)
                 
         except Exception as e:
-            logger.error(f"Error preprocessing audio data: {e}")
+            logger.error(f"Error preparing audio data: {e}")
             return {
                 "original_text": "",
                 "translated_text": "",
                 "detected_language": source_lang or "en",
-                "error": f"Audio preprocessing failed: {str(e)}"
+                "error": f"Audio preparation error: {e}"
             }
         
-        # Determine the task based on target language
-        task = "translate" if target_lang == "en" else "transcribe"
-        
-        # Try GPU first, then fallback to CPU if needed
+        # Try different devices if needed
         devices_to_try = [self.device]
-        # Only try GPU if we're not on AMD or if we explicitly want to try it
-        if self.device == "cpu" and self.gpu_available and not hasattr(torch.version, 'hip'):
+        if self.gpu_available and self.device == "cpu":
             devices_to_try.append("cuda")
-        elif self.device == "cuda" and hasattr(torch.version, 'hip'):
-            # For AMD GPUs, don't try GPU again if we're already on CPU
-            pass
         elif self.device == "cuda":
             devices_to_try.append("cpu")
-        
+            
         for device in devices_to_try:
             try:
                 logger.info(f"Attempting transcription on {device}")
                 
-                # Move model to the target device if needed
+                # Switch to device if needed
                 if device != self.device:
                     if not self.switch_to_device(device):
-                        logger.error(f"Failed to switch to {device}, skipping")
                         continue
                 
-                # Validate language codes first
-                if source_lang and source_lang not in self.supported_languages:
-                    logger.warning(f"Source language {source_lang} not found in supported languages. Using auto-detection instead.")
-                    source_lang = None
-                    
-                if target_lang not in self.supported_languages:
-                    logger.warning(f"Target language {target_lang} not found in supported languages. Falling back to English.")
-                    target_lang = "en"
-                
-                # First transcribe to get original text and detect language
-                transcription_options = {"task": "transcribe"}
+                # Transcribe with Whisper
                 if source_lang:
-                    transcription_options["language"] = source_lang
-                    
-                transcription_result = self.model.transcribe(
-                    audio_data, 
-                    **transcription_options
-                )
+                    # Use specified source language
+                    result = self.model.transcribe(
+                        audio_data,
+                        language=source_lang,
+                        task="transcribe"
+                    )
+                else:
+                    # Let Whisper detect the language
+                    result = self.model.transcribe(
+                        audio_data,
+                        task="transcribe"
+                    )
                 
-                original_text = transcription_result["text"]
-                detected_lang = transcription_result.get("language", "en")
+                original_text = result["text"].strip()
+                detected_lang = result["language"]
                 
                 logger.info(f"Detected language: {detected_lang}, original text: {original_text[:50]}...")
                 
-                # If target is the same as source, no translation needed
-                if detected_lang == target_lang:
-                    logger.info("Source and target languages match, no translation needed")
+                # Skip if no text was transcribed
+                if not original_text:
                     return {
-                        "original_text": original_text,
-                        "translated_text": original_text,
-                        "detected_language": detected_lang
+                        "original_text": "",
+                        "translated_text": "",
+                        "detected_language": detected_lang,
+                        "error": "No speech detected"
                     }
                 
-                # For non-English target languages, we need to use a workaround
-                if target_lang != "en":
-                    # First translate to English if source isn't English
-                    if detected_lang != "en":
-                        english_result = self.model.transcribe(
-                            audio_data,
-                            language=detected_lang,
-                            task="translate"
-                        )
-                        english_text = english_result["text"]
-                        logger.info(f"Translated to English: {english_text[:50]}...")
-                    else:
-                        english_text = original_text
-                        
-                    # Now use prompt-based approach to get the model to translate to target language
-                    target_result = self._prompt_translate(english_text, target_lang)
-                    translated_text = target_result
-                else:
-                    # Direct translation to English
-                    translation_result = self.model.transcribe(
-                        audio_data,
-                        language=detected_lang,
-                        task="translate"
-                    )
-                    translated_text = translation_result["text"]
-                    logger.info(f"Translated text: {translated_text[:50]}...")
+                # Use ModelManager for text translation
+                translated_text = self.model_manager.translate_text(
+                    original_text, 
+                    detected_lang, 
+                    target_lang
+                )
+                
+                logger.info(f"Translation completed: {original_text[:30]}... -> {translated_text[:30]}...")
                 
                 return {
                     "original_text": original_text,
                     "translated_text": translated_text,
-                    "detected_language": detected_lang
+                    "detected_language": detected_lang,
+                    "error": None
                 }
                 
             except Exception as e:
-                error_msg = str(e)
-                logger.error(f"Error in transcribe_and_translate on {device}: {error_msg}")
+                error_msg = f"Error on {device}: {e}"
+                logger.error(error_msg)
                 
-                # If this is a HIP error and we haven't tried CPU yet, continue to CPU
-                if "HIP error" in error_msg and device == "cuda" and "cpu" in devices_to_try:
-                    logger.info("HIP error detected, will try CPU fallback")
-                    continue
-                elif "nan" in error_msg.lower() or "invalid values" in error_msg.lower():
-                    logger.error(f"NaN/Invalid values detected on {device}, this suggests model corruption")
-                    # Try to reload the model on CPU as a last resort
-                    if device == "cuda" and "cpu" in devices_to_try:
-                        logger.info("Attempting to reload model on CPU due to NaN errors")
-                        try:
-                            # Reload the model on CPU
-                            model_name = "tiny"  # Use the smallest model for stability
-                            self.model = whisper.load_model(model_name, device="cpu")
-                            self.device = "cpu"
-                            logger.info("Successfully reloaded model on CPU")
-                            continue
-                        except Exception as reload_e:
-                            logger.error(f"Failed to reload model: {reload_e}")
-                            return {
-                                "original_text": "",
-                                "translated_text": "",
-                                "detected_language": source_lang or "en",
-                                "error": f"Model corruption detected: {error_msg}"
-                            }
-                    else:
-                        return {
-                            "original_text": "",
-                            "translated_text": "",
-                            "detected_language": source_lang or "en",
-                            "error": f"Model corruption on {device}: {error_msg}"
-                        }
-                elif device == "cpu":
-                    # If CPU also failed, return error
+                # If this is the last device to try, return error
+                if device == devices_to_try[-1]:
                     return {
                         "original_text": "",
                         "translated_text": "",
@@ -282,33 +260,9 @@ class TranslationService:
             "error": "All device attempts failed"
         }
     
-    def _prompt_translate(self, text: str, target_lang: str) -> str:
-        """
-        Use Whisper's text capabilities to translate text to a target language
-        by using clever prompting
-        """
-        try:
-            # Get the full language name for clearer instructions
-            language_name = self.supported_languages.get(target_lang, "Unknown")
-            
-            # Create a prompt that instructs translation
-            prompt = f"Translate the following text to {language_name}: {text}"
-            logger.info(f"Using translation prompt to {language_name}")
-            
-            # For now, return the original text since Whisper doesn't support
-            # direct text-to-text translation without audio input
-            # This is a limitation of the current Whisper implementation
-            logger.warning("Direct text translation not supported by Whisper. Returning original text.")
-            return text
-            
-        except Exception as e:
-            logger.error(f"Error in prompt translation: {e}")
-            return text  # Fallback to original text
-            
     def translate_text(self, text: str, source_lang: str, target_lang: str) -> str:
         """
-        Translate text from source language to target language
-        This is a simpler method that doesn't require audio input
+        Translate text from source language to target language using ModelManager
         """
         logger.info(f"Translating text from {source_lang} to {target_lang}")
         
@@ -326,18 +280,8 @@ class TranslationService:
             return text
             
         try:
-            # For translation to English, we can use Whisper's capabilities directly
-            if target_lang == "en":
-                return self._prompt_translate(text, target_lang)
-            else:
-                # For non-English targets, translate to English first if needed
-                if source_lang != "en":
-                    english_text = self._prompt_translate(text, "en")
-                else:
-                    english_text = text
-                    
-                # Then translate from English to target language
-                return self._prompt_translate(english_text, target_lang)
+            # Use ModelManager for text translation
+            return self.model_manager.translate_text(text, source_lang, target_lang)
                 
         except Exception as e:
             logger.error(f"Error in text translation: {e}")
