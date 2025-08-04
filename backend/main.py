@@ -171,13 +171,19 @@ class ConnectionManager:
                 
     async def send_bytes(self, websocket: WebSocket, data: bytes):
         try:
-            await websocket.send_bytes(data)
+            if not websocket.closed:
+                await websocket.send_bytes(data)
+            else:
+                logger.warning("Attempted to send bytes to closed WebSocket")
         except Exception as e:
             logger.error(f"Error sending bytes: {e}")
             
     async def send_json(self, websocket: WebSocket, data: dict):
         try:
-            await websocket.send_json(data)
+            if not websocket.closed:
+                await websocket.send_json(data)
+            else:
+                logger.warning("Attempted to send JSON to closed WebSocket")
         except Exception as e:
             logger.error(f"Error sending JSON: {e}")
 
@@ -284,8 +290,12 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                             disconnected = True
                         else:
                             try:
-                                await websocket.send_json({"type": "ping"})
-                                logger.debug(f"Sent keep-alive ping to {user_id}")
+                                if not websocket.closed:
+                                    await websocket.send_json({"type": "ping"})
+                                    logger.debug(f"Sent keep-alive ping to {user_id}")
+                                else:
+                                    logger.debug(f"WebSocket closed for {user_id}, skipping ping")
+                                    disconnected = True
                             except Exception:
                                 disconnected = True
                 except WebSocketDisconnect:
