@@ -106,6 +106,36 @@ class TranslationService:
         """
         logger.info(f"Transcribing audio with source_lang={source_lang}, target_lang={target_lang}")
         
+        # Ensure audio data is writable and properly formatted
+        try:
+            # Make sure audio data is writable and in the right format
+            if hasattr(audio_data, 'flags'):
+                audio_data.flags.writeable = True
+            audio_data = np.asarray(audio_data, dtype=np.float32)
+            
+            # Check for invalid audio data
+            if np.isnan(audio_data).any() or np.isinf(audio_data).any():
+                logger.error("Audio data contains NaN or infinite values")
+                return {
+                    "original_text": "",
+                    "translated_text": "",
+                    "detected_language": source_lang or "en",
+                    "error": "Invalid audio data (NaN or infinite values)"
+                }
+                
+            # Normalize audio if needed
+            if np.max(np.abs(audio_data)) > 1.0:
+                audio_data = audio_data / np.max(np.abs(audio_data))
+                
+        except Exception as e:
+            logger.error(f"Error preprocessing audio data: {e}")
+            return {
+                "original_text": "",
+                "translated_text": "",
+                "detected_language": source_lang or "en",
+                "error": f"Audio preprocessing failed: {str(e)}"
+            }
+        
         # Determine the task based on target language
         task = "translate" if target_lang == "en" else "transcribe"
         
@@ -198,6 +228,33 @@ class TranslationService:
                 if "HIP error" in error_msg and device == "cuda" and "cpu" in devices_to_try:
                     logger.info("HIP error detected, will try CPU fallback")
                     continue
+                elif "nan" in error_msg.lower() or "invalid values" in error_msg.lower():
+                    logger.error(f"NaN/Invalid values detected on {device}, this suggests model corruption")
+                    # Try to reload the model on CPU as a last resort
+                    if device == "cuda" and "cpu" in devices_to_try:
+                        logger.info("Attempting to reload model on CPU due to NaN errors")
+                        try:
+                            # Reload the model on CPU
+                            model_name = "tiny"  # Use the smallest model for stability
+                            self.model = whisper.load_model(model_name, device="cpu")
+                            self.device = "cpu"
+                            logger.info("Successfully reloaded model on CPU")
+                            continue
+                        except Exception as reload_e:
+                            logger.error(f"Failed to reload model: {reload_e}")
+                            return {
+                                "original_text": "",
+                                "translated_text": "",
+                                "detected_language": source_lang or "en",
+                                "error": f"Model corruption detected: {error_msg}"
+                            }
+                    else:
+                        return {
+                            "original_text": "",
+                            "translated_text": "",
+                            "detected_language": source_lang or "en",
+                            "error": f"Model corruption on {device}: {error_msg}"
+                        }
                 elif device == "cpu":
                     # If CPU also failed, return error
                     return {
