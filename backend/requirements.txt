@@ -91,3 +91,4 @@ uvicorn==0.35.0
 vosk==0.3.50
 websockets==15.0.1
 wheel==0.45.1
+sacremoses==0.1.1
