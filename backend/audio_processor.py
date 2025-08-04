@@ -127,7 +127,7 @@ class AudioProcessor:
             # Perform speech recognition and translation
             logger.debug(f"Processing {len(audio_np)} samples for user {user_id}")
             
-            # Transcribe and translate
+            # Always process through the pipeline
             result = self.translation_service.transcribe_and_translate(
                 audio_np, target_lang=target_lang
             )
@@ -138,7 +138,7 @@ class AudioProcessor:
                 logger.info(f"Mirroring audio back to sender: {len(audio_chunk)} bytes")
                 await websocket.send_bytes(wav_data)
             
-            # Only return results if we have text
+            # Only process TTS and return results if we have translated text
             if result and result.get("translated_text") and len(result["translated_text"]) > 0:
                 logger.info(f"Translation result: {result['translated_text'][:50]}...")
 
@@ -181,6 +181,9 @@ class AudioProcessor:
                     "language": result.get("detected_language", "unknown"),
                     "user_id": user_id
                 }
+            else:
+                # Even if no translation result, clear buffer to prevent accumulation
+                self._clear_buffer(room_id, user_id)
                 
             return None
             
