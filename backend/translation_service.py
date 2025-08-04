@@ -4,11 +4,11 @@ sys.path.insert(0, "./deps")
 
 import whisper
 import torch
+import numpy as np
 from typing import Dict, List, Optional
 from model_selector import select_appropriate_whisper_model
 import logging
 from amd_gpu_utils import safe_gpu_setup
-import numpy as np
 
 logger = logging.getLogger(__name__)
 
