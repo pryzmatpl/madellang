@@ -48,6 +48,7 @@ from room_manager import RoomManager
 from audio_processor import AudioProcessor
 from model_manager import ModelManager
 from translation_service import TranslationService
+from tts_service import TTSService
 from model_selector import select_appropriate_whisper_model
 
 # Create FastAPI app
@@ -66,7 +67,8 @@ app.add_middleware(
 # Initialize the service components - fix the initialization order
 translation_service = TranslationService()
 model_manager = ModelManager()
-audio_processor = AudioProcessor(model_manager, translation_service)
+tts_service = TTSService(use_local_models=True)
+audio_processor = AudioProcessor(model_manager, translation_service, tts_service)
 room_manager = RoomManager(audio_processor)  # Pass audio_processor to RoomManager
 
 # Define request/response models

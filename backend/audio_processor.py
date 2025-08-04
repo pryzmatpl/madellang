@@ -9,10 +9,11 @@ import wave
 logger = logging.getLogger(__name__)
 
 class AudioProcessor:
-    def __init__(self, model_manager, translation_service=None):
+    def __init__(self, model_manager, translation_service=None, tts_service=None):
         self.attatch_wav_header = True
         self.model_manager = model_manager
         self.translation_service = translation_service
+        self.tts_service = tts_service
         self.mirror_mode = True  # Initialize mirror mode to True by default
         # Audio settings
         self.sample_rate = 44100
@@ -79,7 +80,10 @@ class AudioProcessor:
                     )
             
             # Text-to-Speech 
-            translated_audio = self.model_manager.text_to_speech(translated_text, target_lang)
+            if self.tts_service:
+                translated_audio = self.tts_service.text_to_speech(translated_text, target_lang)
+            else:
+                translated_audio = self.model_manager.text_to_speech(translated_text, target_lang)
             
             # Return the processed audio as bytes
             return translated_audio
@@ -135,14 +139,20 @@ class AudioProcessor:
             if result and result.get("translated_text") and len(result["translated_text"]) > 0:
                 logger.info(f"Translation result: {result['translated_text'][:50]}...")
 
-                # Run speech to text:
+                # Run text-to-speech:
                 try:
-                    # Assuming self.tts_service is a text-to-speech service
-                    # Convert the translated text to an audio byte array (WAV format)
-                    translated_audio = self.tts_service.text_to_speech(
-                        result["translated_text"],
-                        lang=target_lang
-                    )
+                    if self.tts_service:
+                        # Convert the translated text to an audio byte array (WAV format)
+                        translated_audio = self.tts_service.text_to_speech(
+                            result["translated_text"],
+                            lang=target_lang
+                        )
+                    else:
+                        # Fallback to model manager
+                        translated_audio = self.model_manager.text_to_speech(
+                            result["translated_text"],
+                            target_lang
+                        )
 
                     # Ensure translated_audio is in bytes format
                     if isinstance(translated_audio, np.ndarray):
