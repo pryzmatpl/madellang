@@ -61,12 +61,7 @@ class TranslationService:
         # Set up GPU environment with AMD-specific configurations
         gpu_available = safe_gpu_setup()
         
-        # For AMD GPUs, start with CPU to avoid HIP compatibility issues
-        if gpu_available and hasattr(torch.version, 'hip'):
-            logger.info("AMD GPU detected, starting with CPU to avoid HIP compatibility issues")
-            self.device = "cpu"
-            self.gpu_available = False  # We'll keep GPU as fallback but start with CPU
-        elif gpu_available:
+        if gpu_available:
             self.device = "cuda"
             self.gpu_available = True
             logger.info(f"Using GPU: {torch.cuda.get_device_name(0)}")
@@ -136,7 +131,7 @@ class TranslationService:
                 return False
         return True
         
-    def transcribe_and_translate(self, audio_data, source_lang: Optional[str] = None, target_lang: str = "en") -> Dict:
+    def transcribe_and_translate(self, audio_data, source_lang: Optional[str] = "en", target_lang: str = "en") -> Dict:
         """
         Transcribe audio and translate it to the target language using Whisper for STT and ModelManager for translation
         
