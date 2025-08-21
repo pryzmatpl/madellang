@@ -1,9 +1,6 @@
 import sys
 # Add the deps directory to the Python path
-sys.path.insert(0, "./deps")
-
-# Import the custom torch loader to set up paths
-from torch_loader import get_device_info
+#sys.path.insert(0, "./deps")
 
 # Import AMD GPU utilities
 from amd_gpu_utils import configure_gpu_environment
@@ -22,11 +19,6 @@ import json
 import websockets
 from websockets.exceptions import ConnectionClosedError
 
-# Print diagnostic information
-torch_info = get_device_info()
-print(f"PyTorch version: {torch_info['version']}")
-print(f"ROCm version: {torch_info['rocm_version']}")
-print(f"Device available: {torch_info['device_name']}")
 print(f"Whisper version: {whisper.__version__}")
 
 import uuid

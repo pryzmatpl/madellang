@@ -22,8 +22,8 @@ services:
       - "8000:8000"
     environment:
       - WHISPER_MODEL=small
-      - HSA_OVERRIDE_GFX_VERSION=10.3.0
-      - AMD_SERIALIZE_KERNEL=3
+      - HSA_OVERRIDE_GFX_VERSION=11.0.0
+      - AMD_SERIALIZE_KERNEL=1
       - PYTORCH_HIP_ALLOC_CONF=max_split_size_mb:128
     volumes:
       - ./models:/app/models

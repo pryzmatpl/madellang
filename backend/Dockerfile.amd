@@ -1,5 +1,5 @@
 # Base image with ROCm support
-FROM ubuntu:22.04 as base
+FROM rocm/pytorch:rocm6.4.1_ubuntu22.04_py3.10_pytorch_release_2.6.0
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -7,26 +7,17 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     python3-dev \
     build-essential \
-    wget \
-    git \
     libsndfile1 \
     curl \
-    software-properties-common \
-    gnupg \
     && rm -rf /var/lib/apt/lists/*
 
-# Install ROCm
-RUN wget -q -O - https://repo.radeon.com/rocm/rocm-sigkey.gpg | apt-key add - \
-    && echo 'deb [arch=amd64] https://repo.radeon.com/rocm/apt/5.4/ ubuntu main' | tee /etc/apt/sources.list.d/rocm.list \
-    && apt-get update && apt-get install -y \
-    rocm-libs \
-    rocm-dev \
-    && rm -rf /var/lib/apt/lists/*
+# Install Python dependencies for compatibility
+RUN pip3 install --no-cache-dir numpy==1.26.4
 
 # Set environment variables
 ENV PATH="/opt/rocm/bin:${PATH}" \
-    HSA_OVERRIDE_GFX_VERSION=10.3.0 \
-    AMD_SERIALIZE_KERNEL=3 \
+    HSA_OVERRIDE_GFX_VERSION=11.0.0 \
+    AMD_SERIALIZE_KERNEL=1 \
     PYTORCH_HIP_ALLOC_CONF=max_split_size_mb:128 \
     HIP_VISIBLE_DEVICES=0 \
     WHISPER_MODEL=small
@@ -47,4 +38,4 @@ COPY . .
 EXPOSE 8000
 
 # Run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"] 
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

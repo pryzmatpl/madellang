@@ -15,7 +15,7 @@ dev-frontend:
 # Start backend development server with hot reload
 dev-backend:
 	@echo "Starting backend development server..."
-	cd backend && ./run_with_custom_torch.sh
+	docker compose up backend
 
 # Install dependencies
 install: install-frontend install-backend
