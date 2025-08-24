@@ -1,6 +1,6 @@
 import sys
 # Add the deps directory to the Python path
-#sys.path.insert(0, "./deps")
+sys.path.insert(0, "./deps")
 
 # Import AMD GPU utilities
 from amd_gpu_utils import configure_gpu_environment
