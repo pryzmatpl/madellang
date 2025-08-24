@@ -20,6 +20,7 @@ services:
       dockerfile: Dockerfile.amd
     ports:
       - "8000:8000"
+      - "52415:52415"
     environment:
       - WHISPER_MODEL=small
       - HSA_OVERRIDE_GFX_VERSION=11.0.0
