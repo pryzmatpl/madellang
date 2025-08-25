@@ -19,7 +19,7 @@ sounddevice>=0.4.6
 
 # Alternative speech recognition (backup for whisper)
 SpeechRecognition>=3.10.0
-vosk>=0.3.50
+vosk==0.3.45
 
 # System monitoring
 psutil>=5.9.5
