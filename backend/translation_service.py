@@ -4,9 +4,6 @@ sys.path.insert(0, "./deps")
 
 import logging
 from whisper_loader import get_whisper_info
-import whisper
-from torch_loader import get_device_info
-import torch
 import numpy as np
 from typing import Optional, Dict, Any, List
 import time
@@ -19,6 +16,7 @@ from model_manager import ModelManager
 def safe_gpu_setup():
     """Safely set up GPU environment with AMD-specific configurations"""
     try:
+        import torch
         # Check if CUDA is available
         if torch.cuda.is_available():
             # For AMD GPUs, we need to be more careful
@@ -39,6 +37,7 @@ def safe_gpu_setup():
 def select_appropriate_whisper_model():
     """Select appropriate Whisper model based on available resources"""
     try:
+        import torch
         if torch.cuda.is_available():
             # Check available GPU memory
             gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3  # GB
@@ -80,6 +79,7 @@ class TranslationService:
         # Attempt to load the model with error handling
         try:
             # Load model on the initial device
+            import whisper
             self.model = whisper.load_model(model_name, device=self.device)
             logger.info(f"Successfully loaded {model_name} model on {self.device}")
             
@@ -90,6 +90,7 @@ class TranslationService:
                 logger.info("Attempting fallback to CPU")
                 self.device = "cpu"
                 try:
+                    import whisper
                     self.model = whisper.load_model(model_name, device="cpu")
                     logger.info(f"Successfully loaded {model_name} model on CPU")
                 except Exception as cpu_e:
@@ -97,6 +98,7 @@ class TranslationService:
                     # Try tiny model as last resort
                     if model_name != "tiny":
                         logger.info("Attempting fallback to tiny model on CPU")
+                        import whisper
                         self.model = whisper.load_model("tiny", device="cpu")
                         logger.info("Successfully loaded tiny model on CPU")
                     else:
@@ -108,6 +110,7 @@ class TranslationService:
         # Languages Whisper can handle - ensure we load this correctly
         self.supported_languages = {}
         try:
+            import whisper
             self.supported_languages = whisper.tokenizer.LANGUAGES
             logger.info(f"Loaded {len(self.supported_languages)} supported languages")
         except Exception as e:
@@ -122,6 +125,7 @@ class TranslationService:
         if device != self.device:
             logger.info(f"Switching model from {self.device} to {device}")
             try:
+                import torch
                 self.model = self.model.to(device)
                 self.device = device
                 logger.info(f"Successfully switched to {device}")
@@ -191,6 +195,7 @@ class TranslationService:
                 # Transcribe with Whisper
                 if source_lang:
                     # Use specified source language
+                    import whisper
                     result = self.model.transcribe(
                         audio_data,
                         language=source_lang,
@@ -198,6 +203,7 @@ class TranslationService:
                     )
                 else:
                     # Let Whisper detect the language
+                    import whisper
                     result = self.model.transcribe(
                         audio_data,
                         task="transcribe"

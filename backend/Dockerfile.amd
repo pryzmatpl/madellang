@@ -11,9 +11,6 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies for compatibility
-RUN pip3 install --no-cache-dir numpy==1.26.4
-
 # Set environment variables
 ENV PATH="/opt/rocm/bin:${PATH}" \
     HSA_OVERRIDE_GFX_VERSION=11.0.0 \
@@ -28,8 +25,10 @@ WORKDIR /app
 # Copy requirements
 COPY requirements_amd.txt .
 
-# Install Python dependencies
-RUN pip3 install --no-cache-dir -r requirements_amd.txt
+# Activate conda environment and install Python dependencies
+RUN . /opt/conda/etc/profile.d/conda.sh && \
+    conda activate py_3.10 && \
+    pip3 install --no-cache-dir -r requirements_amd.txt
 
 # Copy app files
 COPY . .
@@ -37,5 +36,12 @@ COPY . .
 # Expose port
 EXPOSE 8000
 
-# Run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+WORKDIR /app/deps/exo
+RUN . /opt/conda/etc/profile.d/conda.sh && \
+    conda activate py_3.10 && \
+    ./install.sh
+
+WORKDIR /app
+
+# Run the application with conda environment activated
+CMD ["./scripts/start.sh"]
