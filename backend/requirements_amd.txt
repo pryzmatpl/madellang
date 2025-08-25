@@ -6,6 +6,7 @@ pydantic>=2.6.0
 
 # ML dependencies
 transformers>=4.38.0
+# Note: NumPy is handled in Dockerfile for compatibility with whisper/numba
 tqdm>=4.67.0
 regex>=2023.0.0
 
