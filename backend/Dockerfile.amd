@@ -11,9 +11,6 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Force NumPy 1.x for compatibility with whisper and numba
-RUN pip3 install --no-cache-dir "numpy<2.0.0"
-
 # Set environment variables
 ENV PATH="/opt/rocm/bin:${PATH}" \
     HSA_OVERRIDE_GFX_VERSION=11.0.0 \

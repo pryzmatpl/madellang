@@ -3,7 +3,6 @@ import sys
 sys.path.insert(0, "./deps")
 
 import logging
-from whisper_loader import get_whisper_info
 import whisper
 from torch_loader import get_device_info
 import torch

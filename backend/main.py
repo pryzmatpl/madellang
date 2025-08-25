@@ -9,7 +9,6 @@ from amd_gpu_utils import configure_gpu_environment
 gpu_config = configure_gpu_environment()
 
 # Import other dependencies
-sys.path.append("./deps/whisper")
 sys.path.append("./deps/audio")
 
 import whisper

@@ -18,7 +18,8 @@ sounddevice>=0.4.6
 # System monitoring
 psutil>=5.9.5
 
-# Whisper dependencies (excluding torch - provided by base image)
+# Whisper dependencies (latest version from PyPI for NumPy 2.x compatibility)
+openai-whisper>=20240930
 tiktoken>=0.9.0
 
 # Testing
