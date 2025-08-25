@@ -25,10 +25,8 @@ WORKDIR /app
 # Copy requirements
 COPY requirements_amd.txt .
 
-# Activate conda environment and install Python dependencies
-RUN . /opt/conda/etc/profile.d/conda.sh && \
-    conda activate py_3.10 && \
-    pip3 install --no-cache-dir -r requirements_amd.txt
+# Install Python dependencies
+RUN pip3 install --no-cache-dir -r requirements_amd.txt
 
 # Copy app files
 COPY . .
@@ -37,11 +35,9 @@ COPY . .
 EXPOSE 8000
 
 WORKDIR /app/deps/exo
-RUN . /opt/conda/etc/profile.d/conda.sh && \
-    conda activate py_3.10 && \
-    ./install.sh
+RUN ./install.sh
 
 WORKDIR /app
 
-# Run the application with conda environment activated
-CMD ["./scripts/start.sh"]
+# Run the application
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

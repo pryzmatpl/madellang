@@ -9,6 +9,10 @@ from pathlib import Path
 sys.path.insert(0, "./deps")
 from torch_loader import get_device_info
 from whisper_loader import get_whisper_info
+import torch
+
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, MarianMTModel, MarianTokenizer
+import whisper
 
 class ModelManager:
     def __init__(self):
@@ -24,15 +28,9 @@ class ModelManager:
     def _init_local_models(self):
         """Initialize local AI models"""
         try:
-            # Import ML libraries only when needed
-            import torch
-            import whisper
-            from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, MarianMTModel, MarianTokenizer
-            
             # Speech-to-Text (Whisper)
             print("Loading Whisper model...")
-            from whisper_loader import load_whisper_model
-            self.stt_model = load_whisper_model("medium")
+            self.stt_model = whisper.load_model("medium")
             print("Whisper model loaded successfully")
             
             # Translation (MarianMT from HuggingFace)
@@ -90,11 +88,7 @@ class ModelManager:
     
     def _get_device(self):
         """Get the appropriate device (CUDA if available, else CPU)"""
-        try:
-            import torch
-            return "cuda" if torch.cuda.is_available() else "cpu"
-        except ImportError:
-            return "cpu"
+        return "cuda" if torch.cuda.is_available() else "cpu"
             
     def _init_api_clients(self):
         """Initialize API clients for cloud services"""

@@ -17,6 +17,8 @@ from amd_gpu_utils import configure_gpu_environment
 # Configure GPU environment early in the startup
 gpu_config = configure_gpu_environment()
 
+import torch
+
 logger = logging.getLogger(__name__)
 
 class TTSService:
@@ -40,23 +42,16 @@ class TTSService:
     
     def _get_device(self) -> str:
         """Get the appropriate device for TTS processing"""
-        try:
-            import torch
-            if torch.cuda.is_available():
-                return "cuda"
-            elif hasattr(torch, 'hip') and torch.hip.is_available():
-                return "cuda"  # ROCm uses CUDA API
-            else:
-                return "cpu"
-        except ImportError:
+        if torch.cuda.is_available():
+            return "cuda"
+        elif hasattr(torch, 'hip') and torch.hip.is_available():
+            return "cuda"  # ROCm uses CUDA API
+        else:
             return "cpu"
     
     def _init_local_models(self):
         """Initialize local TTS models"""
         try:
-            # Import torch only when needed
-            import torch
-            
             # Add TTS to path
             import sys
             sys.path.append("./deps/TTS")
@@ -75,7 +70,6 @@ class TTSService:
             self.tts_model = None
             # Try simpler model
             try:
-                import torch
                 from TTS.api import TTS
                 self.tts_model = TTS("tts_models/en/vctk/vits", gpu=torch.cuda.is_available())
                 logger.info("Loaded fallback TTS model")
@@ -84,7 +78,6 @@ class TTSService:
                 self.tts_model = None
                 # Try basic TTS
                 try:
-                    import torch
                     from TTS.api import TTS
                     self.tts_model = TTS("tts_models/en/ljspeech/tacotron2-DDC", gpu=torch.cuda.is_available())
                     logger.info("Loaded basic TTS model")

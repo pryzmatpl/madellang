@@ -12,10 +12,14 @@ gpu_config = configure_gpu_environment()
 sys.path.append("./deps/whisper")
 sys.path.append("./deps/audio")
 
+import whisper
+import torch
 import logging
 import json
 import websockets
 from websockets.exceptions import ConnectionClosedError
+
+print(f"Whisper version: {whisper.__version__}")
 
 import uuid
 import asyncio
@@ -31,20 +35,6 @@ import time
 # Setup logging
 logger = logging.getLogger(__name__)
 
-# Delay imports of heavy ML libraries until they're needed
-def import_ml_libraries():
-    """Import ML libraries only when needed to avoid early import issues"""
-    global whisper, torch
-    try:
-        import whisper
-        import torch
-        print(f"Whisper version: {whisper.__version__}")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to import ML libraries: {e}")
-        return False
-
-# Import other service modules
 from room_manager import RoomManager
 from audio_processor import AudioProcessor
 from model_manager import ModelManager
@@ -66,10 +56,6 @@ app.add_middleware(
 )
 
 # Initialize the service components - fix the initialization order
-# Import ML libraries first to avoid import issues
-if not import_ml_libraries():
-    logger.error("Failed to import ML libraries, services may not work properly")
-
 translation_service = TranslationService()
 model_manager = ModelManager()
 tts_service = TTSService(use_local_models=True)
