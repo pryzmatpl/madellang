@@ -31,7 +31,8 @@ class ModelManager:
             
             # Speech-to-Text (Whisper)
             print("Loading Whisper model...")
-            self.stt_model = whisper.load_model("medium")
+            from whisper_loader import load_whisper_model
+            self.stt_model = load_whisper_model("medium")
             print("Whisper model loaded successfully")
             
             # Translation (MarianMT from HuggingFace)

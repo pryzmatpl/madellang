@@ -3,7 +3,7 @@ import sys
 sys.path.insert(0, "./deps")
 
 import logging
-from whisper_loader import get_whisper_info
+from whisper_loader import get_whisper_info, load_whisper_model
 import numpy as np
 from typing import Optional, Dict, Any, List
 import time
@@ -78,9 +78,8 @@ class TranslationService:
         
         # Attempt to load the model with error handling
         try:
-            # Load model on the initial device
-            import whisper
-            self.model = whisper.load_model(model_name, device=self.device)
+            # Load model using the new loader that handles numba issues
+            self.model = load_whisper_model(model_name, device=self.device)
             logger.info(f"Successfully loaded {model_name} model on {self.device}")
             
         except Exception as e:
@@ -90,31 +89,37 @@ class TranslationService:
                 logger.info("Attempting fallback to CPU")
                 self.device = "cpu"
                 try:
-                    import whisper
-                    self.model = whisper.load_model(model_name, device="cpu")
+                    self.model = load_whisper_model(model_name, device="cpu")
                     logger.info(f"Successfully loaded {model_name} model on CPU")
                 except Exception as cpu_e:
                     logger.error(f"Error loading model on CPU: {cpu_e}")
                     # Try tiny model as last resort
                     if model_name != "tiny":
                         logger.info("Attempting fallback to tiny model on CPU")
-                        import whisper
-                        self.model = whisper.load_model("tiny", device="cpu")
+                        self.model = load_whisper_model("tiny", device="cpu")
                         logger.info("Successfully loaded tiny model on CPU")
                     else:
                         raise cpu_e
             else:
-                # Re-raise if we're already trying the smallest model
-                raise
-                
-        # Languages Whisper can handle - ensure we load this correctly
+                raise e
+        
+        # Load supported languages
         self.supported_languages = {}
         try:
-            import whisper
-            self.supported_languages = whisper.tokenizer.LANGUAGES
+            # Try to get languages from the model or use fallback
+            if hasattr(self.model, 'supported_languages'):
+                self.supported_languages = self.model.supported_languages
+            else:
+                # Fallback to basic language list
+                self.supported_languages = {
+                    "en": "English", "es": "Spanish", "fr": "French", "de": "German",
+                    "it": "Italian", "pt": "Portuguese", "ru": "Russian", "ja": "Japanese",
+                    "ko": "Korean", "zh": "Chinese", "ar": "Arabic", "hi": "Hindi"
+                }
             logger.info(f"Loaded {len(self.supported_languages)} supported languages")
         except Exception as e:
-            logger.error(f"Error loading language list: {e}")
+            logger.warning(f"Could not load language list: {e}")
+            self.supported_languages = {"en": "English"}
             
         # Initialize the model manager for text translation
         self.model_manager = ModelManager()
@@ -195,7 +200,6 @@ class TranslationService:
                 # Transcribe with Whisper
                 if source_lang:
                     # Use specified source language
-                    import whisper
                     result = self.model.transcribe(
                         audio_data,
                         language=source_lang,
@@ -203,7 +207,6 @@ class TranslationService:
                     )
                 else:
                     # Let Whisper detect the language
-                    import whisper
                     result = self.model.transcribe(
                         audio_data,
                         task="transcribe"
