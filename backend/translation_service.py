@@ -3,7 +3,7 @@ import sys
 sys.path.insert(0, "./deps")
 
 import logging
-import whisper
+from transformer_speech_service import TransformerSpeechService
 from torch_loader import get_device_info
 import torch
 import numpy as np
@@ -35,28 +35,28 @@ def safe_gpu_setup():
         logger.error(f"Error in GPU setup: {e}")
         return False
 
-def select_appropriate_whisper_model():
-    """Select appropriate Whisper model based on available resources"""
+def select_appropriate_speech_model():
+    """Select appropriate speech recognition model based on available resources"""
     try:
         if torch.cuda.is_available():
             # Check available GPU memory
             gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3  # GB
             if gpu_memory >= 8:
-                return "large-v3"
+                return "facebook/wav2vec2-large-xlsr-53"  # Large model
             elif gpu_memory >= 4:
-                return "medium"
+                return "facebook/wav2vec2-base-960h"      # Medium model
             else:
-                return "small"
+                return "facebook/wav2vec2-base-960h"      # Base model
         else:
             # For CPU, use smaller models
-            return "tiny"
+            return "facebook/wav2vec2-base-960h"
     except Exception as e:
-        logger.error(f"Error selecting Whisper model: {e}")
-        return "tiny"
+        logger.error(f"Error selecting speech model: {e}")
+        return "facebook/wav2vec2-base-960h"
 
 class TranslationService:
     def __init__(self):
-        """Initialize the translation service using Whisper for STT and ModelManager for translation"""
+        """Initialize the translation service using TransformerSpeechService for STT and ModelManager for translation"""
         # Set up GPU environment with AMD-specific configurations
         gpu_available = safe_gpu_setup()
         
@@ -73,42 +73,40 @@ class TranslationService:
         self.initial_device = self.device
         
         # Select appropriate model size
-        model_name = select_appropriate_whisper_model()
-        logger.info(f"Loading Whisper model '{model_name}' for transcription on {self.device}")
+        model_name = select_appropriate_speech_model()
+        logger.info(f"Loading speech recognition model '{model_name}' for transcription on {self.device}")
         
         # Attempt to load the model with error handling
         try:
-            # Load model on the initial device
-            self.model = whisper.load_model(model_name, device=self.device)
-            logger.info(f"Successfully loaded {model_name} model on {self.device}")
+            # Load model using the new transformer-based service
+            self.speech_service = TransformerSpeechService(model_name)
+            logger.info(f"Successfully loaded speech recognition model on {self.device}")
             
         except Exception as e:
-            logger.error(f"Error loading {model_name} model on {self.device}: {e}")
+            logger.error(f"Error loading speech recognition model on {self.device}: {e}")
             # Try fallback to CPU if GPU loading failed
             if self.device == "cuda":
                 logger.info("Attempting fallback to CPU")
                 self.device = "cpu"
                 try:
-                    self.model = whisper.load_model(model_name, device="cpu")
-                    logger.info(f"Successfully loaded {model_name} model on CPU")
+                    self.speech_service = TransformerSpeechService(model_name)
+                    logger.info(f"Successfully loaded speech recognition model on CPU")
                 except Exception as cpu_e:
                     logger.error(f"Error loading model on CPU: {cpu_e}")
-                    # Try tiny model as last resort
-                    if model_name != "tiny":
-                        logger.info("Attempting fallback to tiny model on CPU")
-                        self.model = whisper.load_model("tiny", device="cpu")
-                        logger.info("Successfully loaded tiny model on CPU")
+                    # Try smaller model as last resort
+                    if "large" in model_name:
+                        logger.info("Attempting fallback to base model on CPU")
+                        self.speech_service = TransformerSpeechService("facebook/wav2vec2-base-960h")
+                        logger.info("Successfully loaded base model on CPU")
                     else:
-                        # Re-raise if we're already trying the smallest model
-                        raise
+                        raise cpu_e
             else:
-                # Re-raise if we're already trying the smallest model
-                raise
+                raise e
                 
-        # Languages Whisper can handle - ensure we load this correctly
+        # Get supported languages from the speech service
         self.supported_languages = {}
         try:
-            self.supported_languages = whisper.tokenizer.LANGUAGES
+            self.supported_languages = self.speech_service.get_supported_languages()
             logger.info(f"Loaded {len(self.supported_languages)} supported languages")
         except Exception as e:
             logger.error(f"Error loading language list: {e}")
@@ -124,7 +122,7 @@ class TranslationService:
             logger.info(f"Switching model from {self.device} to {device}")
             try:
                 import torch
-                self.model = self.model.to(device)
+                self.speech_service.model = self.speech_service.model.to(device)
                 self.device = device
                 logger.info(f"Successfully switched to {device}")
                 return True
@@ -193,14 +191,14 @@ class TranslationService:
                 # Transcribe with Whisper
                 if source_lang:
                     # Use specified source language
-                    result = self.model.transcribe(
+                    result = self.speech_service.transcribe(
                         audio_data,
                         language=source_lang,
                         task="transcribe"
                     )
                 else:
                     # Let Whisper detect the language
-                    result = self.model.transcribe(
+                    result = self.speech_service.transcribe(
                         audio_data,
                         task="transcribe"
                     )

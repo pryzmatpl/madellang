@@ -11,7 +11,7 @@ from torch_loader import get_device_info
 import torch
 
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, MarianMTModel, MarianTokenizer
-import whisper
+from transformer_speech_service import TransformerSpeechService
 
 class ModelManager:
     def __init__(self):
@@ -27,10 +27,10 @@ class ModelManager:
     def _init_local_models(self):
         """Initialize local AI models"""
         try:
-            # Speech-to-Text (Whisper)
-            print("Loading Whisper model...")
-            self.stt_model = whisper.load_model("medium")
-            print("Whisper model loaded successfully")
+            # Speech-to-Text (Transformer-based instead of Whisper)
+            print("Loading speech recognition model...")
+            self.stt_model = TransformerSpeechService("facebook/wav2vec2-base-960h")
+            print("Speech recognition model loaded successfully")
             
             # Translation (MarianMT from HuggingFace)
             self.translation_models = {}
@@ -105,7 +105,7 @@ class ModelManager:
     def speech_to_text(self, audio_data: np.ndarray) -> str:
         """Convert speech to text using the appropriate model"""
         if self.use_local_models:
-            # Use local Whisper model
+            # Use local transformer-based speech recognition model
             result = self.stt_model.transcribe(audio_data)
             return result["text"]
         else:

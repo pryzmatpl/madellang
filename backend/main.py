@@ -11,14 +11,10 @@ gpu_config = configure_gpu_environment()
 # Import other dependencies
 sys.path.append("./deps/audio")
 
-import whisper
-import torch
 import logging
 import json
 import websockets
 from websockets.exceptions import ConnectionClosedError
-
-print(f"Whisper version: {whisper.__version__}")
 
 import uuid
 import asyncio
