@@ -6,7 +6,8 @@ pydantic>=2.6.0
 
 # ML dependencies - using transformers directly for NumPy 2.x compatibility
 transformers>=4.38.0
-# Note: NumPy is handled in Dockerfile for compatibility
+# Pin NumPy to 1.x for compatibility with PyTorch and other ML libraries
+numpy>=1.19.5,<2.0.0
 tqdm>=4.67.0
 regex>=2023.0.0
 
