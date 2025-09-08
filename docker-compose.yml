@@ -27,8 +27,7 @@ services:
       - AMD_SERIALIZE_KERNEL=1
       - PYTORCH_HIP_ALLOC_CONF=max_split_size_mb:128
     volumes:
-      - ./models:/app/models
-      - ./data:/app/data
+      - ./:/app
     devices:
       - /dev/kfd:/dev/kfd
       - /dev/dri:/dev/dri

@@ -28,9 +28,6 @@ COPY requirements_amd.txt .
 # Install Python dependencies
 RUN pip3 install --no-cache-dir -r requirements_amd.txt
 
-# Copy app files
-COPY . .
-
 # Expose port
 EXPOSE 8000
 
