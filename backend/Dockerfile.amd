@@ -45,6 +45,8 @@ WORKDIR /app
 # Copy requirements and scripts
 COPY requirements_unified.txt .
 COPY install_pytorch_rocm.sh .
+COPY setup_nanochat_deps.sh .
+COPY test_nanochat_integration.py .
 
 # Install Rust for nanochat tokenizer
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
@@ -62,6 +64,9 @@ RUN pip3 install --no-cache-dir -r requirements_unified.txt
 
 # Copy app files
 COPY . .
+
+# Set up nanochat in deps directory
+RUN bash setup_nanochat_deps.sh
 
 # Expose port
 EXPOSE 8000

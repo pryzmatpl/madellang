@@ -1,27 +1,36 @@
-# Voice Translation Application
+# Madellang Backend: Voice Translation + AI Training Platform
 
-A real-time voice translation backend built with FastAPI, WebSockets, and AI services that enables multilingual communication. **Now includes integrated nanochat training capabilities for training ChatGPT-like models locally.**
+A comprehensive backend built with FastAPI, WebSockets, and AI services that enables multilingual communication AND local AI model training. **Now featuring complete nanochat integration for training ChatGPT-like models directly in Docker containers with AMD GPU acceleration!**
 
 ## Features
 
+### 🎤 **Voice Translation**
 - Real-time voice translation using WebSockets
 - Support for multiple languages
 - Room-based system for group conversations
 - Configurable to use either cloud APIs or local models
 - Complete audio processing pipeline: Speech-to-Text → Translation → Text-to-Speech
-- **🆕 Nanochat Training Integration**: Train your own ChatGPT-like models locally
-- **🆕 Background Training Jobs**: Asynchronous model training with progress monitoring
+
+### 🧠 **AI Model Training** 
+- **🆕 Complete Nanochat Integration**: Full ChatGPT-like model training pipeline
+- **🆕 Local Training Service**: Train models directly in Docker container
+- **🆕 Multiple Training Modes**: CPU demo, single GPU, and full multi-GPU training
+- **🆕 Real-time Monitoring**: Track training progress, logs, and metrics via API
+- **🆕 Background Processing**: Training runs asynchronously without blocking services
 - **🆕 Comprehensive Testing**: Unit, integration, and functional test suites
+- **🆕 AMD GPU Acceleration**: Full ROCm support for training
+- **🆕 Rust Integration**: Custom BPE tokenizer compilation
 
 ## Architecture
 
-The backend consists of five main components:
+The backend consists of six main components:
 
 1. **WebSocket Server**: Handles real-time bidirectional communication with clients
 2. **Room Manager**: Creates and manages translation rooms
 3. **Audio Processing Pipeline**: Processes incoming audio streams
 4. **Model Manager**: Handles different AI models (local and API-based)
 5. **🆕 Nanochat Training Service**: Manages background training jobs for ChatGPT-like models
+6. **🆕 Local Nanochat Integration**: Complete nanochat source code and training scripts in `deps/nanochat/`
 
 ## Installation
 
@@ -52,18 +61,28 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-## 🆕 Nanochat Training Setup
+## 🧠 **Nanochat Training Integration**
+
+### 🎉 **Major Achievement**
+The backend now includes **complete nanochat integration** - a full ChatGPT-like model training pipeline that runs directly in Docker containers with AMD GPU acceleration!
 
 ### Prerequisites for Training
 - AMD GPU with ROCm support (recommended)
 - At least 16GB RAM
 - 50GB+ free disk space
 - Rust compiler (installed automatically)
+- Docker with GPU support
 
 ### Quick Setup
 ```bash
-# Run the setup script
-bash setup_nanochat.sh
+# The integration is automatically set up in Docker
+docker-compose up backend
+
+# Or run setup manually
+bash setup_nanochat_deps.sh
+
+# Test the integration
+python3 test_nanochat_integration.py
 
 # Start a CPU demo training
 curl -X POST http://localhost:8000/training/start \
@@ -76,7 +95,15 @@ curl -X POST http://localhost:8000/training/start \
 - **Single GPU**: 20-layer model, full dataset, <8 hours  
 - **Full Training**: 32-layer model, multi-GPU, 24+ hours
 
-For detailed setup instructions, see [NANOCHAT_SETUP_GUIDE.md](NANOCHAT_SETUP_GUIDE.md)
+### What's Included
+- **Complete Source Code**: Full nanochat in `deps/nanochat/`
+- **Training Scripts**: Direct access to all training scripts
+- **Rust Tokenizer**: Custom BPE tokenizer compilation
+- **Web UI**: Full training interface at `/training`
+- **Real-time Monitoring**: Progress tracking and logs
+- **AMD GPU Support**: Full ROCm acceleration
+
+For detailed setup instructions, see [NANOCHAT_DEPS_README.md](NANOCHAT_DEPS_README.md)
 
 ## Configuration
 
@@ -262,18 +289,26 @@ const getTrainingLogs = async (jobId) => {
 ## Project Structure
 
 ```
-voice-translation-app/
+madellang-backend/
 ├── main.py                      # FastAPI application and endpoints
 ├── room_manager.py              # Room and participant management
 ├── audio_processor.py           # Audio processing pipeline
 ├── model_manager.py             # AI model management
 ├── translation_service.py       # Translation logic
 ├── nanochat_training_service.py # 🆕 Nanochat training management
-├── setup_nanochat.sh           # 🆕 Nanochat environment setup
+├── setup_nanochat_deps.sh      # 🆕 Nanochat integration setup
+├── test_nanochat_integration.py # 🆕 Integration testing
 ├── run_tests.sh                # 🆕 Automated test runner
-├── requirements.txt             # Dependencies
+├── requirements_unified.txt     # 🆕 Unified dependencies
 ├── requirements_test.txt        # 🆕 Test dependencies
 ├── pytest.ini                  # 🆕 Pytest configuration
+├── deps/                        # 🆕 Dependencies directory
+│   └── nanochat/               # 🆕 Complete nanochat source code
+│       ├── nanochat/           # Python package
+│       ├── scripts/            # Training scripts
+│       ├── rustbpe/            # Rust tokenizer
+│       ├── tasks/              # Evaluation tasks
+│       └── pyproject.toml      # Dependencies
 └── tests/                       # 🆕 Comprehensive test suite
     ├── unit/                    # Unit tests
     ├── integration/             # Integration tests

@@ -9,11 +9,15 @@ import asyncio
 import subprocess
 import json
 import os
+import sys
 import time
 import logging
 from typing import Dict, Optional, List
 from pydantic import BaseModel
 from datetime import datetime
+
+# Add nanochat to Python path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'deps', 'nanochat'))
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +132,11 @@ class NanochatTrainingService:
             "NANOCHAT_BASE_DIR": "/app/cache/nanochat",
             "OMP_NUM_THREADS": "1",
             "WANDB_RUN": job.config.wandb_run,
-            "PYTHONPATH": "/app:/app/nanochat"
+            "PYTHONPATH": "/app:/app/deps/nanochat",
+            "HSA_OVERRIDE_GFX_VERSION": "10.3.0",
+            "AMD_SERIALIZE_KERNEL": "3",
+            "PYTORCH_HIP_ALLOC_CONF": "max_split_size_mb:128",
+            "HIP_VISIBLE_DEVICES": "0"
         })
         
         # Check if Rust is available
@@ -151,17 +159,17 @@ class NanochatTrainingService:
         
         commands = [
             # Reset report
-            (["python", "-m", "nanochat.report", "reset"], "report_reset"),
+            (["python3", "-m", "nanochat.report", "reset"], "report_reset"),
             
             # Download minimal dataset
-            (["python", "-m", "nanochat.dataset", "-n", "4"], "dataset_download"),
+            (["python3", "-m", "nanochat.dataset", "-n", "4"], "dataset_download"),
             
             # Train tokenizer
-            (["python", "-m", "scripts.tok_train", "--max_chars=1000000000"], "tokenizer_training"),
-            (["python", "-m", "scripts.tok_eval"], "tokenizer_evaluation"),
+            (["python3", "deps/nanochat/scripts/tok_train.py", "--max_chars=1000000000"], "tokenizer_training"),
+            (["python3", "deps/nanochat/scripts/tok_eval.py"], "tokenizer_evaluation"),
             
             # Train small model
-            (["python", "-m", "scripts.base_train",
+            (["python3", "deps/nanochat/scripts/base_train.py",
               "--depth=4",
               "--max_seq_len=1024",
               "--device_batch_size=1",
@@ -174,11 +182,11 @@ class NanochatTrainingService:
               "--num_iterations=50"], "base_training"),
             
             # Evaluate model
-            (["python", "-m", "scripts.base_loss", "--device_batch_size=1", "--split_tokens=4096"], "model_evaluation"),
-            (["python", "-m", "scripts.base_eval", "--max-per-task=16"], "core_evaluation"),
+            (["python3", "deps/nanochat/scripts/base_loss.py", "--device_batch_size=1", "--split_tokens=4096"], "model_evaluation"),
+            (["python3", "deps/nanochat/scripts/base_eval.py", "--max-per-task=16"], "core_evaluation"),
             
             # Mid training
-            (["python", "-m", "scripts.mid_train",
+            (["python3", "deps/nanochat/scripts/mid_train.py",
               "--max_seq_len=1024",
               "--device_batch_size=1",
               "--eval_every=50",
@@ -187,7 +195,7 @@ class NanochatTrainingService:
               "--num_iterations=100"], "mid_training"),
             
             # SFT training
-            (["python", "-m", "scripts.chat_sft",
+            (["python3", "deps/nanochat/scripts/chat_sft.py",
               "--device_batch_size=1",
               "--target_examples_per_step=4",
               "--num_iterations=100",
@@ -195,7 +203,7 @@ class NanochatTrainingService:
               "--eval_metrics_max_problems=16"], "sft_training"),
             
             # Generate final report
-            (["python", "-m", "nanochat.report", "generate"], "report_generation")
+            (["python3", "-m", "nanochat.report", "generate"], "report_generation")
         ]
         
         total_commands = len(commands)
@@ -222,7 +230,7 @@ class NanochatTrainingService:
         # Check GPU availability
         try:
             result = await self._execute_command(
-                ["python", "-c", "import torch; print(torch.cuda.is_available())"],
+                ["python3", "-c", "import torch; print(torch.cuda.is_available())"],
                 job
             )
             if "True" not in result["stdout"]:
@@ -233,32 +241,32 @@ class NanochatTrainingService:
         
         commands = [
             # Download dataset
-            (["python", "-m", "nanochat.dataset", "-n", "16"], "dataset_download"),
+            (["python3", "-m", "nanochat.dataset", "-n", "16"], "dataset_download"),
             
             # Train tokenizer
-            (["python", "-m", "scripts.tok_train", "--max_chars=4000000000"], "tokenizer_training"),
-            (["python", "-m", "scripts.tok_eval"], "tokenizer_evaluation"),
+            (["python3", "deps/nanochat/scripts/tok_train.py", "--max_chars=4000000000"], "tokenizer_training"),
+            (["python3", "deps/nanochat/scripts/tok_eval.py"], "tokenizer_evaluation"),
             
             # Train model
-            (["python", "-m", "scripts.base_train",
+            (["python3", "deps/nanochat/scripts/base_train.py",
               f"--depth={config.model_depth}",
               f"--device_batch_size={config.device_batch_size}",
               f"--max_seq_len={config.max_seq_len}",
               f"--num_iterations={config.num_iterations}"], "base_training"),
             
             # Evaluate model
-            (["python", "-m", "scripts.base_loss"], "model_evaluation"),
-            (["python", "-m", "scripts.base_eval"], "core_evaluation"),
+            (["python3", "deps/nanochat/scripts/base_loss.py"], "model_evaluation"),
+            (["python3", "deps/nanochat/scripts/base_eval.py"], "core_evaluation"),
             
             # Mid training
-            (["python", "-m", "scripts.mid_train",
+            (["python3", "deps/nanochat/scripts/mid_train.py",
               f"--device_batch_size={config.device_batch_size}"], "mid_training"),
             
             # SFT training
-            (["python", "-m", "scripts.chat_sft"], "sft_training"),
+            (["python3", "deps/nanochat/scripts/chat_sft.py"], "sft_training"),
             
             # Generate report
-            (["python", "-m", "nanochat.report", "generate"], "report_generation")
+            (["python3", "-m", "nanochat.report", "generate"], "report_generation")
         ]
         
         total_commands = len(commands)
