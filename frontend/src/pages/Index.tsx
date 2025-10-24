@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent } from "@/components/ui/card";
-import { Mic, MicOff, Share2, Copy } from "lucide-react";
+import { Mic, MicOff, Share2, Copy, Brain } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import LanguageSelector from "@/components/LanguageSelector";
@@ -14,9 +14,11 @@ import { QRCodeSVG } from 'qrcode.react';
 import { Input } from '@/components/ui/input';
 import { useAudioPlayback } from "@/hooks/useAudioPlayback";
 import AudioOutputControl from "@/components/AudioOutputControl";
+import { useNavigate } from 'react-router-dom';
 
 const Index = () => {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [targetLanguage, setTargetLanguage] = useState("en");
   const [isActive, setIsActive] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -218,7 +220,16 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       <div className="container py-10">
-        <div className="absolute top-4 right-4">
+        <div className="absolute top-4 right-4 flex space-x-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate('/training')}
+            className="flex items-center space-x-2"
+          >
+            <Brain className="h-4 w-4" />
+            <span>Training</span>
+          </Button>
           <ModeToggle
             currentMode={currentMode}
             onModeChange={handleModeChange}

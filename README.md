@@ -17,6 +17,7 @@ Madellang is a real-time voice translation application designed for ultra-low la
 - **Configurable AI backend**: Use OpenAI Whisper, Google, DeepL, or local models (Whisper, Vosk, Coqui TTS)
 - **Extensive UI component library** for rapid development
 - **🆕 Nanochat Training Integration**: Train your own ChatGPT-like models locally
+- **🆕 Training UI**: Comprehensive web interface for managing training jobs
 
 ---
 
@@ -151,6 +152,7 @@ For detailed documentation, see:
 - [Nanochat Setup Guide](NANOCHAT_SETUP_GUIDE.md)
 - [Nanochat Test Plan](NANOCHAT_TEST_PLAN.md)
 - [Nanochat Quick Reference](NANOCHAT_QUICK_REFERENCE.md)
+- [Training UI Documentation](frontend/TRAINING_UI_README.md)
 
 ---
 
