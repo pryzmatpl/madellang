@@ -16,6 +16,7 @@ Madellang is a real-time voice translation application designed for ultra-low la
 - **Minimalist, single-screen UI**
 - **Configurable AI backend**: Use OpenAI Whisper, Google, DeepL, or local models (Whisper, Vosk, Coqui TTS)
 - **Extensive UI component library** for rapid development
+- **🆕 Nanochat Training Integration**: Train your own ChatGPT-like models locally
 
 ---
 
@@ -46,13 +47,16 @@ Madellang is a real-time voice translation application designed for ultra-low la
   - Model management: switch between cloud APIs and local models
   - Health checks and REST endpoints for room management
   - GPU monitoring and optimization for AMD ROCm
+  - **🆕 Nanochat Training Service**: Train ChatGPT-like models locally
 - **Structure**:
   - `main.py`: FastAPI app and endpoints
   - `room_manager.py`: Room and participant logic
   - `audio_processor.py`: Audio stream processing
   - `model_manager.py`: AI model orchestration
   - `translation_service.py`: Translation logic
-  - `tests/`: Automated test suite for core features
+  - `nanochat_training_service.py`: **🆕** Nanochat training management
+  - `setup_nanochat.sh`: **🆕** Nanochat environment setup
+  - `tests/`: Automated test suite for core features and training
 
 ---
 
@@ -91,6 +95,65 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ---
 
+## 🆕 Nanochat Training Integration
+
+Madellang now includes integrated nanochat training capabilities, allowing you to train your own ChatGPT-like models locally using the same AMD GPU infrastructure.
+
+### Features
+- **Multiple Training Modes**: CPU demo, single GPU, and full multi-GPU training
+- **Real-time Monitoring**: Track training progress, logs, and metrics via API
+- **Background Processing**: Training runs asynchronously without blocking the main service
+- **Comprehensive Testing**: Unit, integration, and functional test suites
+
+### Quick Start with Nanochat Training
+
+1. **Setup Environment**:
+   ```bash
+   docker-compose exec backend bash /app/setup_nanochat.sh
+   ```
+
+2. **Start Training** (CPU Demo):
+   ```bash
+   curl -X POST http://localhost:8000/training/start \
+     -H 'Content-Type: application/json' \
+     -d '{"training_stage": "cpu_demo", "num_iterations": 10}'
+   ```
+
+3. **Monitor Progress**:
+   ```bash
+   curl http://localhost:8000/training/status/JOB_ID
+   ```
+
+4. **Run Tests**:
+   ```bash
+   docker-compose exec backend ./run_tests.sh --start all
+   ```
+
+### Training Modes
+
+| Mode | Description | Duration | Model Size | Use Case |
+|------|-------------|----------|------------|----------|
+| **CPU Demo** | Minimal training for testing | ~30 min | 4 layers, ~1M params | Learning/testing |
+| **Single GPU** | Full training on one GPU | ~4-8 hours | 20 layers, ~500M params | Production models |
+| **Full Training** | Multi-GPU training | ~24-48 hours | 32 layers, ~1.9B params | State-of-the-art models |
+
+### API Endpoints
+
+- `POST /training/start` - Start a training job
+- `GET /training/status/{job_id}` - Get training progress
+- `GET /training/logs/{job_id}` - Get training logs
+- `POST /training/stop/{job_id}` - Stop a training job
+- `GET /training/jobs` - List all training jobs
+- `GET /training/config/templates` - Get predefined configurations
+
+For detailed documentation, see:
+- [Nanochat Integration Plan](NANOCHAT_INTEGRATION_PLAN.md)
+- [Nanochat Setup Guide](NANOCHAT_SETUP_GUIDE.md)
+- [Nanochat Test Plan](NANOCHAT_TEST_PLAN.md)
+- [Nanochat Quick Reference](NANOCHAT_QUICK_REFERENCE.md)
+
+---
+
 ## Usage
 
 1. Create or join a room (QR code or link)
@@ -103,16 +166,61 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ## API & Integration
 
+### Voice Translation API
 - **WebSocket endpoint**: `/ws/{room_id}?target_lang={language_code}`
 - **REST endpoints**: Room creation, participant count, health check
 - **Frontend integration**: See backend/README.md for code samples
+
+### 🆕 Nanochat Training API
+- **Training Management**: Start, monitor, and stop training jobs
+- **Real-time Monitoring**: Track progress, logs, and metrics
+- **Configuration Templates**: Predefined training configurations
+- **Job Management**: List, cleanup, and manage training jobs
+
+### Example API Usage
+
+**Start Training**:
+```bash
+curl -X POST http://localhost:8000/training/start \
+  -H 'Content-Type: application/json' \
+  -d '{"training_stage": "cpu_demo", "num_iterations": 50}'
+```
+
+**Monitor Progress**:
+```bash
+curl http://localhost:8000/training/status/{job_id}
+```
+
+**Get Training Logs**:
+```bash
+curl http://localhost:8000/training/logs/{job_id}
+```
 
 ---
 
 ## Testing
 
+### Voice Translation Tests
 - Backend: Run tests in `backend/tests/`
 - Frontend: Run `npm test` in `frontend/`
+
+### 🆕 Nanochat Training Tests
+- **Unit Tests**: Component testing with mocks
+- **Integration Tests**: API endpoint testing
+- **Functional Tests**: End-to-end training pipeline testing
+- **Automated Test Runner**: `./run_tests.sh --start all`
+
+**Run All Tests**:
+```bash
+docker-compose exec backend ./run_tests.sh --start all
+```
+
+**Run Specific Test Types**:
+```bash
+docker-compose exec backend ./run_tests.sh unit
+docker-compose exec backend ./run_tests.sh integration
+docker-compose exec backend ./run_tests.sh functional
+```
 
 ---
 
