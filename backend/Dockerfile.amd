@@ -29,7 +29,10 @@ ENV PATH="/opt/rocm/bin:${PATH}" \
     AMD_SERIALIZE_KERNEL=3 \
     PYTORCH_HIP_ALLOC_CONF=max_split_size_mb:128 \
     HIP_VISIBLE_DEVICES=0 \
-    WHISPER_MODEL=small
+    WHISPER_MODEL=small \
+    NANOCHAT_BASE_DIR="/app/cache/nanochat" \
+    OMP_NUM_THREADS=1 \
+    WANDB_RUN=dummy
 
 # Create app directory
 WORKDIR /app
@@ -37,8 +40,26 @@ WORKDIR /app
 # Copy requirements
 COPY requirements_amd.txt .
 
+# Install Rust for nanochat tokenizer
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Install uv for dependency management
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
+
 # Install Python dependencies
 RUN pip3 install --no-cache-dir -r requirements_amd.txt
+
+# Install nanochat-specific dependencies
+RUN pip3 install --no-cache-dir \
+    datasets>=4.0.0 \
+    files-to-prompt>=0.6 \
+    psutil>=7.1.0 \
+    regex>=2025.9.1 \
+    tiktoken>=0.11.0 \
+    tokenizers>=0.22.0 \
+    wandb>=0.21.3
 
 # Copy app files
 COPY . .

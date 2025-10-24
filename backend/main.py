@@ -35,6 +35,7 @@ import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
+from fastapi.responses import HTMLResponse
 from typing import Dict, List, Optional
 from pydantic import BaseModel
 from pathlib import Path
@@ -49,6 +50,7 @@ from audio_processor import AudioProcessor
 from model_manager import ModelManager
 from translation_service import TranslationService
 from model_selector import select_appropriate_whisper_model
+from nanochat_training_service import NanochatTrainingService, TrainingConfig
 
 # Create FastAPI app
 app = FastAPI()
@@ -68,6 +70,7 @@ translation_service = TranslationService()
 model_manager = ModelManager()
 audio_processor = AudioProcessor(model_manager, translation_service)
 room_manager = RoomManager(audio_processor)  # Pass audio_processor to RoomManager
+training_service = NanochatTrainingService()  # Initialize nanochat training service
 
 # Define request/response models
 class TextTranslationRequest(BaseModel):
@@ -395,6 +398,97 @@ async def test_websocket():
     </html>
     """
     return HTMLResponse(content=html_content)
+
+# Nanochat Training Endpoints
+@app.post("/training/start")
+async def start_training(config: TrainingConfig):
+    """Start a nanochat training job"""
+    try:
+        job_id = str(uuid.uuid4())
+        await training_service.start_training(config, job_id)
+        logger.info(f"Started training job {job_id} with stage: {config.training_stage}")
+        return {
+            "job_id": job_id, 
+            "status": "started",
+            "config": config.dict()
+        }
+    except Exception as e:
+        logger.error(f"Failed to start training: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start training: {str(e)}")
+
+@app.get("/training/status/{job_id}")
+async def get_training_status(job_id: str):
+    """Get training status for a job"""
+    status = training_service.get_training_status(job_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return status
+
+@app.get("/training/logs/{job_id}")
+async def get_training_logs(job_id: str, limit: int = 100):
+    """Get training logs for a job"""
+    logs = training_service.get_training_logs(job_id, limit)
+    if logs is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"job_id": job_id, "logs": logs}
+
+@app.post("/training/stop/{job_id}")
+async def stop_training(job_id: str):
+    """Stop a training job"""
+    success = training_service.stop_training(job_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Job not found")
+    logger.info(f"Stopped training job {job_id}")
+    return {"job_id": job_id, "status": "stopped"}
+
+@app.get("/training/jobs")
+async def list_training_jobs():
+    """List all training jobs"""
+    jobs = training_service.list_jobs()
+    return {
+        "active_jobs": len(jobs["active"]),
+        "completed_jobs": len(jobs["completed"]),
+        "jobs": jobs
+    }
+
+@app.post("/training/cleanup")
+async def cleanup_old_jobs(max_age_hours: int = 24):
+    """Clean up old completed training jobs"""
+    training_service.cleanup_old_jobs(max_age_hours)
+    return {"message": f"Cleaned up jobs older than {max_age_hours} hours"}
+
+@app.get("/training/config/templates")
+async def get_training_config_templates():
+    """Get predefined training configuration templates"""
+    templates = {
+        "cpu_demo": {
+            "training_stage": "cpu_demo",
+            "model_depth": 4,
+            "device_batch_size": 1,
+            "max_seq_len": 1024,
+            "num_iterations": 50,
+            "description": "Minimal training for testing (CPU only)"
+        },
+        "single_gpu": {
+            "training_stage": "single_gpu",
+            "model_depth": 20,
+            "device_batch_size": 16,
+            "max_seq_len": 2048,
+            "num_iterations": -1,
+            "target_param_data_ratio": 20,
+            "description": "Single GPU training with full dataset"
+        },
+        "full_training": {
+            "training_stage": "full",
+            "model_depth": 32,
+            "device_batch_size": 8,
+            "max_seq_len": 2048,
+            "num_iterations": -1,
+            "target_param_data_ratio": 20,
+            "description": "Full multi-GPU training (requires 8xH100)"
+        }
+    }
+    return {"templates": templates}
 
 # Update the audio processing function in main.py
 async def process_audio_data(room_id: str, user_id: str, audio_data: bytes, websocket: WebSocket, target_lang: str):

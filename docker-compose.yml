@@ -28,6 +28,8 @@ services:
     volumes:
       - ./models:/app/models
       - ./data:/app/data
+      - ./cache:/app/cache
+      - ./nanochat:/app/nanochat
     devices:
       - /dev/kfd:/dev/kfd
       - /dev/dri:/dev/dri
