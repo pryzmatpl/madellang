@@ -13,6 +13,11 @@ RUN apt-get update && apt-get install -y \
     curl \
     software-properties-common \
     gnupg \
+    cmake \
+    ninja-build \
+    pkg-config \
+    libssl-dev \
+    libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install ROCm
@@ -37,8 +42,9 @@ ENV PATH="/opt/rocm/bin:${PATH}" \
 # Create app directory
 WORKDIR /app
 
-# Copy requirements
-COPY requirements_amd.txt .
+# Copy requirements and scripts
+COPY requirements_unified.txt .
+COPY install_pytorch_rocm.sh .
 
 # Install Rust for nanochat tokenizer
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
@@ -48,18 +54,11 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:${PATH}"
 
-# Install Python dependencies
-RUN pip3 install --no-cache-dir -r requirements_amd.txt
+# Install PyTorch with ROCm support first
+RUN pip3 install --no-cache-dir torch>=2.8.0 --index-url https://download.pytorch.org/whl/rocm5.6
 
-# Install nanochat-specific dependencies
-RUN pip3 install --no-cache-dir \
-    datasets>=4.0.0 \
-    files-to-prompt>=0.6 \
-    psutil>=7.1.0 \
-    regex>=2025.9.1 \
-    tiktoken>=0.11.0 \
-    tokenizers>=0.22.0 \
-    wandb>=0.21.3
+# Install unified Python dependencies
+RUN pip3 install --no-cache-dir -r requirements_unified.txt
 
 # Copy app files
 COPY . .
