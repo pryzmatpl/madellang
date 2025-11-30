@@ -1,0 +1,27 @@
+# Test dependencies for nanochat training integration
+
+# Testing framework
+pytest>=7.4.0
+pytest-asyncio>=0.21.1
+pytest-mock>=3.10.0
+
+# HTTP testing
+httpx>=0.24.0
+requests>=2.32.0
+
+# Test utilities
+freezegun>=1.2.0
+factory-boy>=3.2.0
+
+# Mocking
+responses>=0.23.0
+
+# Coverage
+pytest-cov>=4.1.0
+coverage>=7.0.0
+
+# Performance testing
+pytest-benchmark>=4.0.0
+
+# Documentation testing
+pytest-doctestplus>=1.0.0

@@ -1,8 +1,10 @@
-# 🗣️ Madellang - The RT Translator and language tutor
+# 🗣️ Madellang Frontend: Voice Translation + AI Training UI
 
-A **real-time voice translation** web application designed for ultra-low latency communication. This app enables seamless voice translation by streaming audio to a server, translating speech into a selected language, and streaming the translated voice back to users—all within a simple, single-screen interface.
+A **comprehensive React frontend** for real-time voice translation AND AI model training. This app enables seamless voice translation by streaming audio to a server, translating speech into a selected language, and provides a complete web interface for training ChatGPT-like models locally with AMD GPU acceleration.
 
 ## 🌟 Features  
+
+### 🎤 **Voice Translation**
 - **📡 WebSocket-based Real-Time Streaming** – Ensures low-latency communication.  
 - **📱 QR Code for Room Access** – Instantly share room links with others.  
 - **🎙️ Live Speech-to-Text + Translation + Text-to-Speech** – Supports multiple languages.  
@@ -10,7 +12,18 @@ A **real-time voice translation** web application designed for ultra-low latency
 - **🔄 Bidirectional Voice Streaming** – Speak and listen simultaneously in a conversation.  
 - **🖥️ Minimalist UI** – Simple interface with a **Start** button, language dropdown, and QR code for easy access.  
 
+### 🧠 **AI Model Training** 
+- **🆕 Complete Training UI** – Full web interface for managing nanochat training jobs
+- **🆕 Real-time Monitoring** – Track training progress, logs, and metrics in real-time
+- **🆕 Multiple Training Modes** – CPU demo, single GPU, and full multi-GPU training
+- **🆕 Job Management** – Start, stop, monitor, and download trained models
+- **🆕 Configuration Templates** – Predefined training configurations
+- **🆕 Training Metrics** – Comprehensive statistics and performance analytics
+- **🆕 Log Viewer** – Real-time training logs with download capability
+
 ## 🏗️ Architecture Overview  
+
+### 🎤 **Voice Translation**
 1. **Frontend (Web App)**  
    - Generates **QR codes** for room sharing.  
    - Establishes **WebSocket connections** to the server.  
@@ -23,13 +36,33 @@ A **real-time voice translation** web application designed for ultra-low latency
    - Translates text to the chosen **target language**.  
    - Converts translated text back into **speech** and streams it to clients.  
 
+### 🧠 **AI Training Integration**
+1. **Training Dashboard** (`/training`)
+   - Complete web interface for managing training jobs
+   - Real-time progress monitoring and metrics
+   - Configuration templates and job management
+
+2. **Training Service** (Backend)
+   - Complete nanochat integration in `deps/nanochat/`
+   - AMD GPU acceleration with ROCm support
+   - Background training job processing
+
 ## 🛠️ Tech Stack  
-- **Frontend:** React (or Svelte) + WebRTC/WebSockets  
-- **Backend:** Node.js (Express/Fastify) or Python (FastAPI)  
+
+### 🎤 **Voice Translation**
+- **Frontend:** React + TypeScript + WebRTC/WebSockets  
+- **Backend:** Python (FastAPI) + WebSockets
 - **AI Services:**  
   - **Cloud APIs:** OpenAI Whisper, Google Cloud Speech, DeepL  
   - **Local Models:** Whisper (STT), Coqui TTS, Vosk (offline STT)  
 - **Streaming:** WebRTC or WebSockets for real-time audio transmission  
+
+### 🧠 **AI Training**
+- **Frontend:** React + TypeScript + shadcn/ui components
+- **Backend:** Python (FastAPI) + nanochat integration
+- **Training:** PyTorch + ROCm (AMD GPU acceleration)
+- **Tokenization:** Rust-based BPE tokenizer
+- **Monitoring:** Real-time progress tracking and metrics
 
 ## 🚀 Getting Started  
 
@@ -71,8 +104,37 @@ npm run dev
 
 ### 4️⃣ Open the Web App
 
-    Go to http://localhost:3000 (or the appropriate port).
+    Go to http://localhost:3000 for voice translation
+    Go to http://localhost:3000/training for AI model training
     Click Start, scan the QR code, and begin streaming live translations!
+
+## 🧠 **Training UI Features**
+
+### **Training Dashboard** (`/training`)
+- **Job Management**: Start, stop, monitor training jobs
+- **Real-time Monitoring**: Progress bars, status indicators, logs
+- **Configuration Templates**: Predefined training configurations
+- **Metrics & Analytics**: Training statistics and performance data
+
+### **Training Components**
+- `TrainingDashboard.tsx` - Main training interface
+- `TrainingConfigForm.tsx` - Configuration form with templates
+- `TrainingLogs.tsx` - Real-time logs viewer
+- `TrainingMetrics.tsx` - Training statistics and analytics
+- `TrainingServiceTest.tsx` - Development test component
+
+### **Training Modes**
+| Mode | Description | Duration | Model Size | Use Case |
+|------|-------------|----------|------------|----------|
+| **CPU Demo** | Minimal training for testing | ~30 min | 4 layers, ~1M params | Learning/testing |
+| **Single GPU** | Full training on one GPU | ~4-8 hours | 20 layers, ~500M params | Production models |
+| **Full Training** | Multi-GPU training | ~24-48 hours | 32 layers, ~1.9B params | State-of-the-art models |
+
+### **API Integration**
+- **Training Service**: Complete API for managing training jobs
+- **Real-time Updates**: Automatic polling for progress updates
+- **Error Handling**: Comprehensive error management and recovery
+- **Log Streaming**: Real-time training logs with download capability
 
 ### Configuration
 

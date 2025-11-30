@@ -1,0 +1,45 @@
+# Unified Requirements for Madellang + Nanochat Integration
+# Resolves version conflicts between both projects
+
+# Web Framework (compatible versions)
+fastapi>=0.117.1
+uvicorn>=0.36.0
+websockets>=12.0
+pydantic>=2.6.0
+
+# ML/AI Core (resolved versions)
+torch>=2.8.0                    # Updated to match nanochat requirement
+numpy>=2.0.0                   # Updated to match madellang requirement
+transformers>=4.38.0
+tqdm>=4.67.0
+
+# Tokenization (compatible versions)
+tiktoken>=0.11.0               # Updated to match nanochat requirement
+tokenizers>=0.22.0             # Updated to match nanochat requirement
+
+# Audio Processing
+soundfile>=0.13.0
+librosa>=0.10.1
+sounddevice>=0.4.6
+
+# System & Utilities (compatible versions)
+psutil>=7.1.0                 # Updated to match nanochat requirement
+regex>=2025.9.1               # Updated to match nanochat requirement
+requests>=2.32.0
+setuptools>=80.9.0
+
+# Nanochat Specific Dependencies
+datasets>=4.0.0
+files-to-prompt>=0.6
+wandb>=0.21.3
+
+# Build Tools
+maturin>=1.7,<2.0
+
+# Testing
+pytest>=8.0.0                 # Updated to match nanochat requirement
+pytest-asyncio>=0.21.1
+
+# Additional utilities
+packaging>=24.0
+typing-extensions>=4.0.0
