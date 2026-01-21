@@ -132,7 +132,7 @@ def safe_gpu_setup():
         compatible = is_gpu_compatible()
         
         if compatible:
-            logger.info(f"GPU setup successful: {torch.cuda.get_device_name()}")
+            logger.info(f"GPU setup successful: {torch.cuda.get_device_name(0)}")
             return True
         else:
             logger.warning("GPU not compatible, falling back to CPU")

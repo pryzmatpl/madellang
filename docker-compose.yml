@@ -20,14 +20,14 @@ services:
       dockerfile: Dockerfile.amd
     ports:
       - "8000:8000"
+      - "52415:52415"
     environment:
       - WHISPER_MODEL=small
-      - HSA_OVERRIDE_GFX_VERSION=10.3.0
-      - AMD_SERIALIZE_KERNEL=3
+      - HSA_OVERRIDE_GFX_VERSION=11.0.0
+      - AMD_SERIALIZE_KERNEL=1
       - PYTORCH_HIP_ALLOC_CONF=max_split_size_mb:128
     volumes:
-      - ./models:/app/models
-      - ./data:/app/data
+      - ./:/app
     devices:
       - /dev/kfd:/dev/kfd
       - /dev/dri:/dev/dri

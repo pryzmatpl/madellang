@@ -2,9 +2,6 @@ import sys
 # Add the deps directory to the Python path
 sys.path.insert(0, "./deps")
 
-# Import the custom torch loader to set up paths
-from torch_loader import get_device_info
-
 # Import AMD GPU utilities
 from amd_gpu_utils import configure_gpu_environment
 
@@ -12,23 +9,12 @@ from amd_gpu_utils import configure_gpu_environment
 gpu_config = configure_gpu_environment()
 
 # Import other dependencies
-sys.path.append("./deps/whisper")
 sys.path.append("./deps/audio")
 
-import whisper
-import torch
-import torchaudio
 import logging
 import json
 import websockets
 from websockets.exceptions import ConnectionClosedError
-
-# Print diagnostic information
-torch_info = get_device_info()
-print(f"PyTorch version: {torch_info['version']}")
-print(f"ROCm version: {torch_info['rocm_version']}")
-print(f"Device available: {torch_info['device_name']}")
-print(f"Whisper version: {whisper.__version__}")
 
 import uuid
 import asyncio
@@ -48,6 +34,7 @@ from room_manager import RoomManager
 from audio_processor import AudioProcessor
 from model_manager import ModelManager
 from translation_service import TranslationService
+from tts_service import TTSService
 from model_selector import select_appropriate_whisper_model
 
 # Create FastAPI app
@@ -66,8 +53,20 @@ app.add_middleware(
 # Initialize the service components - fix the initialization order
 translation_service = TranslationService()
 model_manager = ModelManager()
-audio_processor = AudioProcessor(model_manager, translation_service)
+tts_service = TTSService(use_local_models=True)
+audio_processor = AudioProcessor(model_manager, translation_service, tts_service)
 room_manager = RoomManager(audio_processor)  # Pass audio_processor to RoomManager
+
+# Log available models and capabilities
+logger.info("=== Model Manager Initialization ===")
+logger.info(f"Using local models: {model_manager.use_local_models}")
+if model_manager.use_local_models:
+    logger.info(f"Available language pairs: {model_manager.get_available_language_pairs()}")
+    logger.info(f"Available languages: {model_manager.get_available_languages()}")
+logger.info("=== Translation Service Initialization ===")
+logger.info(f"Whisper model loaded on device: {translation_service.device}")
+logger.info(f"Supported Whisper languages: {len(translation_service.supported_languages)}")
+logger.info("=== Service Initialization Complete ===")
 
 # Define request/response models
 class TextTranslationRequest(BaseModel):
@@ -82,21 +81,29 @@ async def websocket_test(websocket: WebSocket):
     logger.info("Test WebSocket connection accepted")
     
     try:
-        await websocket.send_text("Hello from server - connection established")
+        if websocket:
+            await websocket.send_text("Hello from server - connection established")
         
         # Use a separate receive task to handle disconnections properly
         while True:
             try:
+                # Check if WebSocket is still open before receiving
+                if not websocket:
+                    logger.info("Test WebSocket connection closed")
+                    break
+                    
                 # Create a task for receiving data
                 receive_task = asyncio.create_task(websocket.receive_text())
                 
                 # Wait for message with timeout
                 try:
                     data = await asyncio.wait_for(receive_task, timeout=5.0)
-                    await websocket.send_text(f"Echo: {data}")
+                    if websocket:
+                        await websocket.send_text(f"Echo: {data}")
                 except asyncio.TimeoutError:
                     # Send ping on timeout
-                    await websocket.send_text("ping")
+                    if websocket:
+                        await websocket.send_text("ping")
                     continue
                     
             except WebSocketDisconnect:
@@ -117,6 +124,11 @@ async def websocket_test(websocket: WebSocket):
 async def handle_audio_messages(websocket: WebSocket, room_id: str, user_id: str, target_lang: str):
     while True:
         try:
+            # Check if WebSocket is still open before receiving
+            if not websocket:
+                logger.warning(f"WebSocket is closed for user {user_id}, stopping audio handling")
+                break
+                
             audio_data = await websocket.receive_bytes()
             result = await audio_processor.process_audio_chunk(
                 room_id=room_id,
@@ -125,7 +137,7 @@ async def handle_audio_messages(websocket: WebSocket, room_id: str, user_id: str
                 target_lang=target_lang
             )
             
-            if result:
+            if result and websocket:
                 if "audio" in result:
                     await websocket.send_bytes(result["audio"])
                 else:
@@ -157,19 +169,26 @@ class ConnectionManager:
                 
     async def send_bytes(self, websocket: WebSocket, data: bytes):
         try:
-            await websocket.send_bytes(data)
+            if websocket:
+                await websocket.send_bytes(data)
+            else:
+                logger.warning("Attempted to send bytes to closed WebSocket")
         except Exception as e:
             logger.error(f"Error sending bytes: {e}")
             
     async def send_json(self, websocket: WebSocket, data: dict):
         try:
-            await websocket.send_json(data)
+            if websocket:
+                await websocket.send_json(data)
+            else:
+                logger.warning("Attempted to send JSON to closed WebSocket")
         except Exception as e:
             logger.error(f"Error sending JSON: {e}")
 
 # Initialize the connection manager
 connection_manager = ConnectionManager()
 
+from fastapi import WebSocketDisconnect
 @app.websocket("/ws/{room_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str):
     """WebSocket endpoint with optimized connection flow"""
@@ -187,16 +206,20 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
     try:
         # Send welcome message FIRST, before adding to room
         try:
-            await websocket.send_json({
-                "type": "connection_established",
-                "room_id": room_id,
-                "user_id": user_id
-            })
-            logger.debug(f"Sent connection_established message to {user_id}")
+            if websocket:
+                await websocket.send_json({
+                    "type": "connection_established",
+                    "room_id": room_id,
+                    "user_id": user_id
+                })
+                logger.debug(f"Sent connection_established message to {user_id}")
+            else:
+                logger.warning("WebSocket closed before sending welcome message")
+                disconnected = True
         except Exception as e:
             logger.warning(f"Failed to send welcome message: {str(e)}")
             disconnected = True
-        
+
         # Only proceed if not disconnected
         if not disconnected:
             # Now add to room after confirming connection is working
@@ -207,6 +230,12 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
             # Message handling loop with additional disconnect check
             while not disconnected:
                 try:
+                    # Check if WebSocket is still open before receiving
+                    if not websocket:
+                        logger.info(f"WebSocket closed for user {user_id}")
+                        disconnected = True
+                        break
+                        
                     # Use wait_for with a shorter timeout
                     receive_task = asyncio.create_task(websocket.receive())
                     done, pending = await asyncio.wait(
@@ -232,7 +261,8 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                                 
                                 if msg_type == "ping":
                                     logger.debug(f"Received ping from {user_id}, sending pong")
-                                    await websocket.send_json({"type": "pong"})
+                                    if websocket:
+                                        await websocket.send_json({"type": "pong"})
                                 elif msg_type == "close":
                                     logger.info(f"Client {user_id} requested closure")
                                     disconnected = True
@@ -258,11 +288,17 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                             disconnected = True
                         else:
                             try:
-                                await websocket.send_json({"type": "ping"})
-                                logger.debug(f"Sent keep-alive ping to {user_id}")
+                                if websocket:
+                                    await websocket.send_json({"type": "ping"})
+                                    logger.debug(f"Sent keep-alive ping to {user_id}")
+                                else:
+                                    logger.debug(f"WebSocket closed for {user_id}, skipping ping")
+                                    disconnected = True
                             except Exception:
                                 disconnected = True
-                
+                except WebSocketDisconnect:
+                    logger.info(f"Client {user_id} disconnected abruptly")
+                    disconnected = True
                 except asyncio.CancelledError:
                     logger.info(f"Task for {user_id} was cancelled")
                     disconnected = True
@@ -352,7 +388,30 @@ async def system_info():
     # Add selected model info
     info["whisper_model"] = select_appropriate_whisper_model()
     
+    # Add model manager info
+    info["use_local_models"] = model_manager.use_local_models
+    info["available_language_pairs"] = model_manager.get_available_language_pairs() if model_manager.use_local_models else []
+    info["available_languages"] = model_manager.get_available_languages() if model_manager.use_local_models else []
+    info["whisper_device"] = translation_service.device
+    
     return info
+
+@app.get("/debug/models")
+async def debug_models():
+    """Debug endpoint to check model availability"""
+    try:
+        return {
+            "use_local_models": model_manager.use_local_models,
+            "available_language_pairs": model_manager.get_available_language_pairs(),
+            "available_languages": model_manager.get_available_languages(),
+            "whisper_device": translation_service.device,
+            "can_translate_en_de": model_manager.can_translate("en", "de"),
+            "can_translate_de_en": model_manager.can_translate("de", "en"),
+            "model_manager_type": type(model_manager).__name__,
+            "translation_service_type": type(translation_service).__name__
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.get("/toggle-mirror-mode")
 async def toggle_mirror_mode(enabled: bool = False):
@@ -400,14 +459,17 @@ async def test_websocket():
 async def process_audio_data(room_id: str, user_id: str, audio_data: bytes, websocket: WebSocket, target_lang: str):
     """Process audio data and broadcast results to room participants"""
     try:
-        if audio_processor.mirror_mode:
-            logger.info(f"Mirror mode active: echoing {len(audio_data)} bytes back to sender")
-            # In mirror mode, directly send the audio back to the same client
-            # Convert to WAV format to make it easier for browsers to play
-            sample_rate = 16000
+        # Check if WebSocket is still open before processing
+        if not websocket:
+            logger.warning(f"WebSocket is closed for user {user_id}, skipping audio processing")
+            return
+            
+        wav_data = audio_data
+        if audio_processor.attatch_wav_header:
+            sample_rate = 44100
             channels = 1
             bits = 16
-            
+
             # Create WAV header
             header = bytearray()
             # RIFF header
@@ -428,27 +490,24 @@ async def process_audio_data(room_id: str, user_id: str, audio_data: bytes, webs
             # data chunk
             header.extend(b'data')
             header.extend((len(audio_data)).to_bytes(4, 'little'))  # Data size
-            
+
             # Combine header and audio data
             wav_data = header + audio_data
-            
-            # Send formatted WAV
-            await websocket.send_bytes(wav_data)
-            return
 
-        # Normal translation mode logic
+            # Normal translation mode logic
         result = await audio_processor.process_audio_chunk(
             room_id=room_id,
             user_id=user_id,
-            audio_chunk=audio_data,
-            target_lang=target_lang
+            audio_chunk=wav_data,
+            target_lang=target_lang,
+            websocket=websocket
         )
-        
-        if result:
+
+        if result and websocket:
             if isinstance(result, dict) and "audio" in result:
                 await websocket.send_bytes(result["audio"])
             elif isinstance(result, dict):
                 await room_manager.broadcast_translation(room_id, websocket, result)
-                
+
     except Exception as e:
         logger.error(f"Error processing audio: {str(e)}")

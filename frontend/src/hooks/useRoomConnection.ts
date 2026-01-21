@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import * as React from 'react';
 
 // Define message types for WebSocket
 interface TranslatedAudioMessage {
@@ -52,7 +53,7 @@ interface RoomConnectionOptions {
   onTranslatedAudio: (audio: Blob) => void;
 }
 
-export function useRoomConnection({ 
+export function useRoomConnection({
   targetLanguage,
   onTranslatedAudio 
 }: RoomConnectionOptions) {
@@ -63,7 +64,9 @@ export function useRoomConnection({
     currentRoom: null,
     error: null,
   });
-  
+
+  const isMountedRef = useRef(true);
+
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
   
   // Refs
@@ -74,12 +77,8 @@ export function useRoomConnection({
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const audioProcessorRef = useRef<ScriptProcessorNode | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  
-  // Connection State logging for debugging
-  useEffect(() => {
-    console.log('[useRoomConnection] Room state changed:', roomState);
-  }, [roomState]);
-  
+  const reconnectingRef = useRef(false);
+
   // Stop recording from microphone
   const stopMicrophone = useCallback(() => {
     if (mediaRecorderRef.current) {
@@ -100,16 +99,30 @@ export function useRoomConnection({
   
   // Connect to a room
   const connectToRoom = useCallback(async (roomId?: string): Promise<string | null> => {
+    if (reconnectingRef.current) {
+      console.log('[useRoomConnection] Reconnection already in progress');
+      return null;
+    }
     console.log('[useRoomConnection] Connecting to room, provided ID:', roomId);
     
     try {
+      reconnectingRef.current = true;
+
       // Clean up any existing connections
       if (socketRef.current) {
         console.log('[useRoomConnection] Closing existing WebSocket');
         socketRef.current.close();
         socketRef.current = null;
       }
-      
+
+
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+
+      if (!isMountedRef.current) return null; // ✅
+
       setRoomState(prev => ({ ...prev, status: 'connecting' }));
       
       // If roomId is provided, join that room; otherwise create a new room
@@ -128,11 +141,13 @@ export function useRoomConnection({
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//localhost:8000/ws/${currentRoomId}?target_lang=${targetLanguage}`;
       console.log('[useRoomConnection] Connecting to WebSocket:', wsUrl);
-      
-      // Create new WebSocket
+
+        // Create new WebSocket
       const socket = new WebSocket(wsUrl);
       socketRef.current = socket;
-      
+
+      if (!isMountedRef.current) return null;
+
       socket.onopen = () => {
         console.log('[useRoomConnection] WebSocket connection opened');
         setRoomState(prev => ({ 
@@ -156,6 +171,9 @@ export function useRoomConnection({
       
       socket.onclose = (event) => {
         console.warn(`[useRoomConnection] WebSocket closed with code: ${event.code}, reason: ${event.reason}, wasClean: ${event.wasClean}`);
+        reconnectingRef.current = false;
+
+        if (!isMountedRef.current) return;
         setRoomState(prev => ({ ...prev, status: 'disconnected' }));
         
         // Clear ping interval
@@ -163,23 +181,27 @@ export function useRoomConnection({
           clearInterval(pingIntervalRef.current);
           pingIntervalRef.current = null;
         }
+
+
         
         // Attempt to reconnect if closure wasn't clean
-        if (!event.wasClean) {
+        if (!event.wasClean && isMountedRef.current && !reconnectingRef.current) {
           console.log('[useRoomConnection] Connection closed abnormally, will attempt to reconnect');
-          if (reconnectTimeoutRef.current) {
-            clearTimeout(reconnectTimeoutRef.current);
-          }
-          
+
           reconnectTimeoutRef.current = setTimeout(() => {
-            console.log('[useRoomConnection] Attempting to reconnect...');
-            connectToRoom(currentRoomId);
+            if (isMountedRef.current && !reconnectingRef.current) { // ✅ Double-check before reconnecting
+              console.log('[useRoomConnection] Attempting to reconnect...');
+              connectToRoom(roomState.currentRoom || undefined); // ✅ Use current room from state
+            }
           }, 3000);
         }
+
       };
       
       socket.onerror = (error) => {
         console.error('[useRoomConnection] WebSocket error:', error);
+        reconnectingRef.current = false;
+        if (!isMountedRef.current) return;
       };
       
       // Send a connection check message after WebSocket connects
@@ -189,6 +211,7 @@ export function useRoomConnection({
       });
       
       socket.onmessage = async (event) => {
+        if (!isMountedRef.current) return;
         try {
           // Handle text messages (JSON)
           if (typeof event.data === 'string') {
@@ -255,6 +278,8 @@ export function useRoomConnection({
       return currentRoomId || null;
     } catch (error) {
       console.error('[useRoomConnection] Error connecting to room:', error);
+      reconnectingRef.current = false; // ✅ Clear rec
+      if (!isMountedRef.current) return null;
       setRoomState(prev => ({
         ...prev,
         status: 'disconnected',
@@ -288,7 +313,16 @@ export function useRoomConnection({
   const startMicrophone = useCallback(async () => {
     try {
       console.log('[useRoomConnection] Starting microphone');
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            autoGainControl: false, // Disable to reduce artifacts
+            echoCancellation: false,
+            noiseSuppression: false,
+            channelCount: 1, // Force mono to avoid stereo issues
+            sampleRate: 44100, // Standard sample rate
+          },
+      });
+      console.log("[useRoomConnection] Microphone stream settings:", stream.getAudioTracks()[0].getSettings());
       setAudioStream(stream);
       
       // Configure audio context and processor
@@ -365,11 +399,16 @@ export function useRoomConnection({
   
   // Cleanup on unmount
   useEffect(() => {
+    isMountedRef.current = true;
+
     return () => {
       console.log('[useRoomConnection] Hook unmounting, cleaning up');
-      
-      if (socketRef.current) {
-        socketRef.current.close();
+
+      isMountedRef.current = false;
+
+      if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+        socketRef.current.send(JSON.stringify({ type: 'close' }));
+        socketRef.current.close(1000, 'Component unmounted');
         socketRef.current = null;
       }
       
@@ -395,7 +434,7 @@ export function useRoomConnection({
         reconnectTimeoutRef.current = null;
       }
     };
-  }, [audioStream]);
+  }, [audioStream, socketRef]);
   
   return {
     roomState,

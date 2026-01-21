@@ -98,9 +98,12 @@ class RoomManager:
                 
             # Send translated audio to the recipient
             try:
-                await recipient.send_bytes(translated_audio)
+                if not recipient.closed:
+                    await recipient.send_bytes(translated_audio)
+                else:
+                    logger.warning("Attempted to send translated audio to closed WebSocket")
             except Exception as e:
-                print(f"Error sending translated audio: {e}")
+                logger.error(f"Error sending translated audio: {e}")
 
     async def broadcast_message(self, room_id: str, message: Dict, exclude_websocket=None):
         """Broadcast a JSON message to all participants in a room"""
@@ -108,7 +111,7 @@ class RoomManager:
             return
             
         for websocket in self.rooms[room_id]:
-            if websocket != exclude_websocket:
+            if websocket != exclude_websocket and websocket:
                 try:
                     await websocket.send_json(message)
                 except Exception as e:
@@ -120,7 +123,7 @@ class RoomManager:
             return
             
         for websocket in self.rooms[room_id]:
-            if websocket != exclude_websocket:
+            if websocket != exclude_websocket and websocket:
                 try:
                     await websocket.send_bytes(data)
                 except Exception as e:
@@ -146,7 +149,7 @@ class RoomManager:
             return
         
         for websocket in self.rooms[room_id]:
-            if websocket != source_websocket:  # Don't send back to sender
+            if websocket != source_websocket and websocket:  # Don't send back to sender
                 try:
                     await websocket.send_bytes(audio_data)
                 except Exception as e:

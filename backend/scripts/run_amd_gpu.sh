@@ -1,12 +1,9 @@
 #!/bin/bash
 set -e
 
-echo "🚀 Starting MadeLang with AMD GPU Optimizations"
+source ./venv/bin/activate
 
-# Activate virtual environment if it exists
-if [ -d "venv" ]; then
-    source venv/bin/activate
-fi
+echo "🚀 Starting MadeLang with AMD GPU Optimizations"
 
 # AMD ROCm Optimizations
 echo "⚙️ Setting AMD ROCm optimizations..."
@@ -16,7 +13,7 @@ GPU_ARCH=$(rocminfo | grep -m 1 -oP "gfx\d+" || echo "unknown")
 echo "🖥️ Detected GPU architecture: $GPU_ARCH"
 
 # Set environment variables for ROCm
-export HSA_OVERRIDE_GFX_VERSION=${GPU_ARCH/gfx/}
+export HSA_OVERRIDE_GFX_VERSION=11.0.0
 echo "👉 Setting HSA_OVERRIDE_GFX_VERSION=$HSA_OVERRIDE_GFX_VERSION"
 
 # Memory optimization

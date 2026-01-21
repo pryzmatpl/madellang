@@ -20,7 +20,7 @@ export function useAudioPlayback({
     try {
       // Initialize AudioContext if needed
       if (!audioContextRef.current) {
-        audioContextRef.current = new AudioContext();
+        audioContextRef.current = new AudioContext({sampleRate: 44100});
       }
       
       // Ensure we have proper audio content type
@@ -36,7 +36,7 @@ export function useAudioPlayback({
         const source = audioContextRef.current.createBufferSource();
         source.buffer = audioBuffer;
 
-        console.debug("AudioBlob arrayBuffer size: " + audioBuffer.length);
+        //console.debug("AudioBlob arrayBuffer size: " + audioBuffer.length);
         source.connect(audioContextRef.current.destination);
         
         // Play the audio

@@ -2,10 +2,16 @@ import os
 import numpy as np
 from typing import Optional, Dict, List, Any
 import io
-import torch
+import sys
 from pathlib import Path
+
+# Add the deps directory to the Python path and use custom PyTorch
+sys.path.insert(0, "./deps")
+from torch_loader import get_device_info
+import torch
+
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, MarianMTModel, MarianTokenizer
-import whisper
+from transformer_speech_service import TransformerSpeechService
 
 class ModelManager:
     def __init__(self):
@@ -21,8 +27,10 @@ class ModelManager:
     def _init_local_models(self):
         """Initialize local AI models"""
         try:
-            # Speech-to-Text (Whisper)
-            self.stt_model = whisper.load_model("medium")
+            # Speech-to-Text (Transformer-based instead of Whisper)
+            print("Loading speech recognition model...")
+            self.stt_model = TransformerSpeechService("facebook/wav2vec2-base-960h")
+            print("Speech recognition model loaded successfully")
             
             # Translation (MarianMT from HuggingFace)
             self.translation_models = {}
@@ -31,24 +39,40 @@ class ModelManager:
             # Load available translation models from deps directory
             models_dir = Path("./deps/models")
             if models_dir.exists():
+                print(f"Found models directory: {models_dir}")
                 for model_dir in models_dir.glob("*-*"):
                     if model_dir.is_dir():
                         lang_pair = model_dir.name
                         try:
                             print(f"Loading translation model: {lang_pair}")
-                            self.translation_models[lang_pair] = AutoModelForSeq2SeqLM.from_pretrained(
-                                str(model_dir)
-                            ).to(self._get_device())
-                            self.translation_tokenizers[lang_pair] = AutoTokenizer.from_pretrained(
-                                str(model_dir)
-                            )
+                            device = self._get_device()
+                            print(f"Using device: {device}")
+                            
+                            # Load model and tokenizer
+                            model = AutoModelForSeq2SeqLM.from_pretrained(str(model_dir))
+                            tokenizer = AutoTokenizer.from_pretrained(str(model_dir))
+                            
+                            # Move model to device
+                            model = model.to(device)
+                            
+                            self.translation_models[lang_pair] = model
+                            self.translation_tokenizers[lang_pair] = tokenizer
+                            print(f"Successfully loaded {lang_pair} model on {device}")
+                            
                         except Exception as e:
                             print(f"Error loading translation model {lang_pair}: {e}")
+                            continue
+                
+                print(f"Loaded {len(self.translation_models)} translation models")
+                print(f"Available language pairs: {list(self.translation_models.keys())}")
+            else:
+                print(f"Models directory not found: {models_dir}")
             
             # Text-to-Speech (e.g., Coqui TTS)
             try:
                 from TTS.api import TTS
                 self.tts_model = TTS("tts_models/en/vctk/vits", gpu=torch.cuda.is_available())
+                print("TTS model loaded successfully")
             except Exception as e:
                 print(f"Error loading TTS model: {e}")
                 self.tts_model = None
@@ -81,7 +105,7 @@ class ModelManager:
     def speech_to_text(self, audio_data: np.ndarray) -> str:
         """Convert speech to text using the appropriate model"""
         if self.use_local_models:
-            # Use local Whisper model
+            # Use local transformer-based speech recognition model
             result = self.stt_model.transcribe(audio_data)
             return result["text"]
         else:
@@ -104,12 +128,20 @@ class ModelManager:
     def translate_text(self, text: str, source_lang: str, target_lang: str) -> str:
         """Translate text to the target language"""
         if self.use_local_models:
+            # Normalize language codes to match model directory names
+            source_lang = source_lang.lower()
+            target_lang = target_lang.lower()
+            
             # Construct language pair key
             lang_pair = f"{source_lang}-{target_lang}"
             reverse_lang_pair = f"{target_lang}-{source_lang}"
             
+            print(f"Attempting translation from {source_lang} to {target_lang}")
+            print(f"Available models: {list(self.translation_models.keys())}")
+            
             # Check if we have the model for this language pair
             if lang_pair in self.translation_models:
+                print(f"Using direct model: {lang_pair}")
                 model = self.translation_models[lang_pair]
                 tokenizer = self.translation_tokenizers[lang_pair]
             elif reverse_lang_pair in self.translation_models:
@@ -119,16 +151,33 @@ class ModelManager:
                 tokenizer = self.translation_tokenizers[reverse_lang_pair]
             else:
                 print(f"No translation model found for {source_lang} to {target_lang}")
+                print(f"Available pairs: {list(self.translation_models.keys())}")
                 return text
                 
             # Process translation
             try:
                 device = self._get_device()
-                inputs = tokenizer(text, return_tensors="pt").to(device)
+                print(f"Translating on device: {device}")
+                
+                # Tokenize input
+                inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True, max_length=512)
+                inputs = {k: v.to(device) for k, v in inputs.items()}
+                
+                # Generate translation
                 with torch.no_grad():
-                    outputs = model.generate(**inputs, max_length=512)
+                    outputs = model.generate(
+                        **inputs, 
+                        max_length=512,
+                        num_beams=4,
+                        early_stopping=True,
+                        no_repeat_ngram_size=2
+                    )
+                
+                # Decode output
                 translated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+                print(f"Translation completed: '{text[:50]}...' -> '{translated_text[:50]}...'")
                 return translated_text
+                
             except Exception as e:
                 print(f"Translation error: {e}")
                 return text
@@ -227,3 +276,23 @@ class ModelManager:
         else:
             # Return a standard list for API mode
             return ["en", "es", "fr", "de", "it", "ja", "ko", "zh", "ru", "pt", "ar", "hi"]
+    
+    def get_available_language_pairs(self) -> List[str]:
+        """Get a list of available language pairs for translation"""
+        if self.use_local_models:
+            return list(self.translation_models.keys())
+        else:
+            # Return common pairs for API mode
+            return ["en-de", "en-es", "en-fr", "en-it", "en-ru", "de-en", "es-en", "fr-en", "it-en", "ru-en"]
+    
+    def can_translate(self, source_lang: str, target_lang: str) -> bool:
+        """Check if translation is available for the given language pair"""
+        if self.use_local_models:
+            source_lang = source_lang.lower()
+            target_lang = target_lang.lower()
+            lang_pair = f"{source_lang}-{target_lang}"
+            reverse_lang_pair = f"{target_lang}-{source_lang}"
+            return lang_pair in self.translation_models or reverse_lang_pair in self.translation_models
+        else:
+            # For API mode, assume all common languages are supported
+            return True

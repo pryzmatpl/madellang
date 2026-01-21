@@ -9,13 +9,15 @@ import wave
 logger = logging.getLogger(__name__)
 
 class AudioProcessor:
-    def __init__(self, model_manager, translation_service=None):
+    def __init__(self, model_manager, translation_service=None, tts_service=None):
+        self.attatch_wav_header = True
         self.model_manager = model_manager
         self.translation_service = translation_service
+        self.tts_service = tts_service
         self.mirror_mode = True  # Initialize mirror mode to True by default
         # Audio settings
-        self.sample_rate = 16000
-        self.chunk_size = 4096
+        self.sample_rate = 44100
+        self.chunk_size = 8192
         # Add buffer management
         self.buffer = {}  # room_id -> user_id -> buffer
         self.last_processing = {}  # room_id -> user_id -> timestamp
@@ -39,10 +41,13 @@ class AudioProcessor:
             # Convert bytes to numpy array for processing
             audio_np = np.frombuffer(audio_data, dtype=np.int16)
             
+            # Convert to float32 for Whisper
+            audio_float = audio_np.astype(np.float32) / 32767.0
+            
             if self.translation_service:
                 # Use Whisper for both STT and translation in one step
                 result = self.translation_service.transcribe_and_translate(
-                    audio_np, 
+                    audio_float, 
                     source_lang=source_lang, 
                     target_lang=target_lang
                 )
@@ -78,7 +83,10 @@ class AudioProcessor:
                     )
             
             # Text-to-Speech 
-            translated_audio = self.model_manager.text_to_speech(translated_text, target_lang)
+            if self.tts_service:
+                translated_audio = self.tts_service.text_to_speech(translated_text, target_lang)
+            else:
+                translated_audio = self.model_manager.text_to_speech(translated_text, target_lang)
             
             # Return the processed audio as bytes
             return translated_audio
@@ -87,7 +95,7 @@ class AudioProcessor:
             print(f"Error in audio processing: {e}")
             return b""
 
-    def to_wav(audio_chunk: bytes, sample_rate: int=16000, num_channels: int = 1, sample_width: int = 2):
+    def to_wav(self, audio_chunk: bytes, sample_rate: int=44100, num_channels: int = 1, sample_width: int = 2):
         # Create a BytesIO object to hold the WAV data
         wav_io = io.BytesIO()
 
@@ -105,44 +113,77 @@ class AudioProcessor:
                                  audio_chunk: bytes, target_lang: str, websocket) -> Optional[Dict]:
         """Process incoming audio chunk and return translation result"""
         try:
-            # If mirror mode is enabled, simply echo the audio back
-            if self.mirror_mode:
-                logger.info(f"Mirroring audio back to sender: {len(audio_chunk)} bytes")
-                logger.debug(audio_chunk)
-                # Send the audio directly back to the same websocket that sent it
-                try:
-                    await websocket.send_bytes(self.to_wav(audio_chunk))
-                    return True
-                except Exception as e:
-                    logger.error(f"Error sending mirrored audio: {str(e)}")
-                    return False
+            # Check if WebSocket is still open before processing
+            if not websocket:
+                logger.warning(f"WebSocket is closed for user {user_id}, skipping audio processing")
+                return None
                 
-            # Regular processing for translation mode
             # Add to buffer and get complete buffer
             complete_buffer = self._add_to_buffer(room_id, user_id, audio_chunk)
             
-            # Convert audio bytes to numpy array
-            audio_np = np.frombuffer(complete_buffer, dtype=np.float32)
+            # Convert audio bytes to numpy array - create a writable copy
+            # audio_chunk is raw PCM data (int16), so convert to float32 properly
+            audio_np = np.frombuffer(complete_buffer, dtype=np.int16).astype(np.float32) / 32767.0
             
             # Process only if we have enough audio data (at least 0.5 seconds)
-            if len(audio_np) < 8000:  # Assuming 16kHz sample rate
+            if len(audio_np) < 22050:  # Assuming 0.5s of 44.1kHz sample rate
                 return None
                 
             # Perform speech recognition and translation
             logger.debug(f"Processing {len(audio_np)} samples for user {user_id}")
             
-            # Transcribe and translate
+            # Always process through the pipeline
             result = self.translation_service.transcribe_and_translate(
                 audio_np, target_lang=target_lang
             )
             
-            # Only return results if we have text
+            # If mirror mode is enabled, send back the original audio
+            if self.mirror_mode and websocket:
+                try:
+                    wav_data = self.to_wav(audio_chunk)
+                    logger.info(f"Mirroring audio back to sender: {len(audio_chunk)} bytes")
+                    await websocket.send_bytes(wav_data)
+                except Exception as mirror_error:
+                    logger.error(f"Error mirroring audio: {mirror_error}")
+            
+            # Only process TTS and return results if we have translated text
             if result and result.get("translated_text") and len(result["translated_text"]) > 0:
                 logger.info(f"Translation result: {result['translated_text'][:50]}...")
+
+                # Run text-to-speech:
+                try:
+                    if self.tts_service:
+                        # Convert the translated text to an audio byte array (WAV format)
+                        translated_audio = self.tts_service.text_to_speech(
+                            result["translated_text"],
+                            lang=target_lang
+                        )
+                    else:
+                        # Fallback to model manager
+                        translated_audio = self.model_manager.text_to_speech(
+                            result["translated_text"],
+                            target_lang
+                        )
+
+                    # Ensure translated_audio is in bytes format
+                    if isinstance(translated_audio, np.ndarray):
+                        translated_audio = translated_audio.tobytes()
+                    elif not isinstance(translated_audio, bytes):
+                        translated_audio = self.to_wav(translated_audio)
+
+                    # Send the translated audio back through WebSocket only if still open
+                    if websocket:
+                        await websocket.send_bytes(translated_audio)
+                    else:
+                        logger.warning(f"WebSocket closed for user {user_id}, skipping translated audio send")
+
+                except Exception as tts_error:
+                    logger.error(f"Error in text-to-speech conversion: {tts_error}")
+                    return None
                 
                 # Clear buffer after successful processing
                 self._clear_buffer(room_id, user_id)
-                
+
                 # Return the result for WebSocket transmission
                 return {
                     "type": "translation_result",
@@ -151,6 +192,9 @@ class AudioProcessor:
                     "language": result.get("detected_language", "unknown"),
                     "user_id": user_id
                 }
+            else:
+                # Even if no translation result, clear buffer to prevent accumulation
+                self._clear_buffer(room_id, user_id)
                 
             return None
             
@@ -169,7 +213,8 @@ class AudioProcessor:
         self.audio_buffers[buffer_key].extend(audio_chunk)
         
         # Limit buffer size (keep last 5 seconds)
-        max_buffer_size = 16000 * 4 * 5  # 5 seconds at 16kHz, 4 bytes per float32
+        # audio_chunk is int16 PCM data, so 2 bytes per sample
+        max_buffer_size = 44100 * 2 * 5  # 5 seconds at 44.1kHz, 2 bytes per int16 sample
         if len(self.audio_buffers[buffer_key]) > max_buffer_size:
             self.audio_buffers[buffer_key] = self.audio_buffers[buffer_key][-max_buffer_size:]
             

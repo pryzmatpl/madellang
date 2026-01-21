@@ -189,6 +189,7 @@ const AudioOutputControl: React.FC<AudioOutputProps> = ({
     };
   }, [roomId, targetLanguage, cleanup, setupWebSocket]);
 
+  if (!roomId) return null; // or a loading state
   return (
     <div className="flex items-center justify-between">
       <Button 
